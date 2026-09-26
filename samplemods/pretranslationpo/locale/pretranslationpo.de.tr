@@ -1,0 +1,22 @@
+﻿# textdomain: pretranslationpo
+# Translated by someone, 2019
+
+### init.lua ###
+Hello @1!=Hallo @1!
+# key with an escaped equals sign
+ratio@=@1=Verhältnis@=@1
+Two@nlines=Zwei@nZeilen
+Continued@
+source=Fortgesetzte@
+Übersetzung
+100@@ sure=100@@ sicher
+Say "hi" \o/=Sag "hallo" \o/
+Untranslated=
+   
+Hello @1!=Hallo nochmal @1!
+
+##### not used anymore #####
+Old string=Alter Text
+
+# textdomain: othermod
+Shared string=Geteilter Text

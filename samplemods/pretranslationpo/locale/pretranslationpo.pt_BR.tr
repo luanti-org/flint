@@ -1,0 +1,4 @@
+# textdomain: pretranslationpo
+Hello @1!=Olá @1!
+This is a deliberately long source string that should be wrapped across several lines in the po output=Esta é uma frase propositalmente longa que deve ser quebrada em várias linhas na saída po
+Untranslated=

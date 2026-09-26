@@ -1,8 +1,6 @@
-use std::collections::BTreeSet;
-use std::fs;
-use std::io::ErrorKind;
-use std::path::Path;
+//! `description.txt` and `depends.txt` into `mod.conf`.
 
+use super::{Plan, read_optional};
 use crate::parsers::settings::format_entry;
 use crate::parsers::{depends_txt, description_txt, mod_conf};
 
@@ -10,7 +8,7 @@ const MOD_CONF: &str = mod_conf::FILE_NAME;
 const DESCRIPTION_TXT: &str = description_txt::FILE_NAME;
 const DEPENDS_TXT: &str = depends_txt::FILE_NAME;
 
-pub fn run() -> Result<(), String> {
+pub(super) fn plan(plan: &mut Plan) -> Result<(), String> {
     let conf_text = read_optional(MOD_CONF)?;
     let conf = mod_conf::parse(conf_text.as_deref().unwrap_or(""));
     let mut additions = String::new();
@@ -29,7 +27,7 @@ pub fn run() -> Result<(), String> {
 
     let depends = read_optional(DEPENDS_TXT)?.map(|s| depends_txt::parse(&s));
     if let Some(txt) = &depends {
-        let pairs: [(&str, &Option<BTreeSet<String>>, &BTreeSet<String>); 2] = [
+        let pairs = [
             ("depends", &conf.depends, &txt.depends),
             ("optional_depends", &conf.optional_depends, &txt.optional_depends),
         ];
@@ -45,31 +43,20 @@ pub fn run() -> Result<(), String> {
         }
     }
 
-    // Everything checked out; only now touch the filesystem.
     if conf_text.is_none() || !additions.is_empty() {
         let mut out = conf_text.unwrap_or_default();
         if !out.is_empty() && !out.ends_with('\n') {
             out.push('\n');
         }
         out.push_str(&additions);
-        fs::write(MOD_CONF, out).map_err(|e| format!("cannot write {MOD_CONF}: {e}"))?;
+        plan.write(MOD_CONF, out);
     }
-
-    for (name, present) in [(DESCRIPTION_TXT, description.is_some()), (DEPENDS_TXT, depends.is_some())] {
-        if present {
-            fs::remove_file(name).map_err(|e| format!("cannot remove {name}: {e}"))?;
-            println!("migrated {name} into {MOD_CONF}");
-        }
+    if description.is_some() {
+        plan.migrate(DESCRIPTION_TXT, MOD_CONF);
+    }
+    if depends.is_some() {
+        plan.migrate(DEPENDS_TXT, MOD_CONF);
     }
 
     Ok(())
-}
-
-fn read_optional(path: impl AsRef<Path>) -> Result<Option<String>, String> {
-    let path = path.as_ref();
-    match fs::read_to_string(path) {
-        Ok(s) => Ok(Some(s)),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("cannot read {}: {e}", path.display())),
-    }
 }
