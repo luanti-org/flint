@@ -1,5 +1,5 @@
 ---
-title: flint
+title: Flint (tool)
 bookCollapseSection: true
 ---
 
