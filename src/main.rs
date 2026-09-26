@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+mod format;
 mod modernize;
+mod panic_guard;
 mod parsers;
 
 #[derive(Parser)]
@@ -19,6 +21,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Version,
+    /// Format all Lua files with StyLua (Lua 5.1 + LuaJIT syntax)
+    Format,
     /// Migrate legacy mod files to their modern equivalents
     Modernize,
 }
@@ -36,6 +40,7 @@ fn main() {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Commands::Format => format::run(),
         Commands::Modernize => modernize::run(),
     };
 

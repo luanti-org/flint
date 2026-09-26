@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 polib = "0.3"
+stylua = { version = "2.5", default-features = false, features = ["luajit"] }

@@ -3,7 +3,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{BufWriter, ErrorKind};
-use std::panic;
 use std::path::PathBuf;
 
 use polib::catalog::Catalog;
@@ -96,16 +95,10 @@ fn build_catalog(tr: &tr::TrFile, file_domain: &str, lang: &str) -> Result<Catal
     Ok(catalog)
 }
 
-/// polib on malformed input, handle as error
 fn parse_po(text: &str) -> Result<Catalog, String> {
-    let hook = panic::take_hook();
-    panic::set_hook(Box::new(|_| {}));
-    let result = panic::catch_unwind(|| po_file::parse_from_reader(text.as_bytes()));
-    panic::set_hook(hook);
-    match result {
-        Ok(parsed) => parsed.map_err(|e| e.to_string()),
-        Err(_) => Err("malformed .po file".to_string()),
-    }
+    crate::panic_guard::catch(|| po_file::parse_from_reader(text.as_bytes()))
+        .map_err(|_| "malformed .po file".to_string())?
+        .map_err(|e| e.to_string())
 }
 
 fn render(catalog: &Catalog) -> Result<String, String> {
