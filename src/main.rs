@@ -9,11 +9,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Bar { name: String },
+    Version,
 }
 
 fn main() {
     match Cli::parse().command {
-        Commands::Bar { name } => println!("yourname: {name}"),
+        Commands::Version => println!("{}", env!("CARGO_PKG_VERSION")),
     }
 }
