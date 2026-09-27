@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+mod content_type;
 mod format;
 mod modernize;
 mod panic_guard;

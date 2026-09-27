@@ -1,22 +1,21 @@
 //! `locale/*.tr` into gettext `locale/*.po`.
 
 use std::collections::{BTreeMap, HashSet};
-use std::fs;
-use std::io::{BufWriter, ErrorKind};
-use std::path::PathBuf;
+use std::io::BufWriter;
+use std::path::{Path, PathBuf};
 
 use polib::catalog::Catalog;
 use polib::message::Message;
 use polib::metadata::CatalogMetadata;
 use polib::po_file;
 
-use super::{Plan, plural_forms, read_optional};
+use super::{Plan, list_dir, plural_forms, read_optional};
 use crate::parsers::tr;
 
 const LOCALE_DIR: &str = "locale";
 
-pub(super) fn plan(plan: &mut Plan) -> Result<(), String> {
-    for tr_path in tr_files()? {
+pub(super) fn plan(plan: &mut Plan, dir: &Path) -> Result<(), String> {
+    for tr_path in tr_files(&dir.join(LOCALE_DIR))? {
         let name = tr_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
         let stem = name.strip_suffix(".tr").unwrap_or(name);
         let (Some(domain), Some((_, lang))) = (stem.split('.').next(), stem.rsplit_once('.')) else {
@@ -44,20 +43,9 @@ pub(super) fn plan(plan: &mut Plan) -> Result<(), String> {
     Ok(())
 }
 
-fn tr_files() -> Result<Vec<PathBuf>, String> {
-    let entries = match fs::read_dir(LOCALE_DIR) {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(format!("cannot read {LOCALE_DIR}: {e}")),
-    };
-    let mut files = Vec::new();
-    for entry in entries {
-        let path = entry.map_err(|e| format!("cannot read {LOCALE_DIR}: {e}"))?.path();
-        if path.is_file() && path.extension().is_some_and(|ext| ext == tr::EXTENSION) {
-            files.push(path);
-        }
-    }
-    files.sort();
+fn tr_files(locale_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = list_dir(locale_dir)?;
+    files.retain(|path| path.is_file() && path.extension().is_some_and(|ext| ext == tr::EXTENSION));
     Ok(files)
 }
 
