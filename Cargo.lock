@@ -341,8 +341,11 @@ dependencies = [
  "codespan",
  "codespan-reporting",
  "full_moon",
+ "globset",
+ "ignore",
  "polib",
  "selene-lib",
+ "serde",
  "stylua",
  "toml 0.7.8",
 ]

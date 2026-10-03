@@ -13,9 +13,6 @@ use selene_lib::{Checker, CheckerConfig};
 
 use crate::parsers::{depends_txt, mod_conf};
 
-/// optional selene config, used for lint severities and per-lint settings
-pub const CONFIG_FILE: &str = "selene.toml";
-
 /// globals provided by Luanti and LuaJIT on top of Lua 5.1
 const LUANTI_GLOBALS: &[&str] = &[
     "core",
@@ -53,12 +50,9 @@ const LUANTI_GLOBALS: &[&str] = &[
     "table.shuffle",
 ];
 
-pub fn run() -> Result<(), String> {
-    let checker = checker(Path::new("."))?;
-
-    let mut files = Vec::new();
-    crate::format::collect_lua_files(Path::new("."), &mut files)?;
-    files.sort();
+pub fn run(flint: &crate::config::Config) -> Result<(), String> {
+    let checker = checker(Path::new("."), flint.selene()?)?;
+    let files = flint.files(Path::new("."))?;
 
     let mut sources = codespan::Files::new();
     let color = if std::io::stderr().is_terminal() { ColorChoice::Auto } else { ColorChoice::Never };
@@ -121,8 +115,8 @@ pub fn run() -> Result<(), String> {
     }
 }
 
-/// build a checker for the package in `dir`, using its config and mod globals
-fn checker(dir: &Path) -> Result<Checker<toml::Value>, String> {
+/// build a checker for the package in `dir`, using `config` and mod globals
+fn checker(dir: &Path, config: CheckerConfig<toml::Value>) -> Result<Checker<toml::Value>, String> {
     let mut std = StandardLibrary::from_name("lua51").expect("selene is missing lua51");
     // selene wrongly requires a second argument, `table.getn` only takes the table
     if let Some(Field { field_kind: FieldKind::Function(getn), .. }) = std.globals.get_mut("table.getn") {
@@ -133,19 +127,11 @@ fn checker(dir: &Path) -> Result<Checker<toml::Value>, String> {
         std.globals
             .insert(name.to_string(), Field::from_field_kind(FieldKind::Any));
     }
-    Checker::new(load_config(dir)?, std).map_err(|e| e.to_string())
+    Checker::new(config, std).map_err(|e| e.to_string())
 }
 
 fn parse(code: &str) -> Result<full_moon::ast::Ast, Vec<full_moon::Error>> {
     full_moon::parse_fallible(code, LuaVersion::luajit()).into_result()
-}
-
-fn load_config(dir: &Path) -> Result<CheckerConfig<toml::Value>, String> {
-    match fs::read_to_string(dir.join(CONFIG_FILE)) {
-        Ok(text) => toml::from_str(&text).map_err(|e| format!("{CONFIG_FILE}: {e}")),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(CheckerConfig::default()),
-        Err(e) => Err(format!("cannot read {CONFIG_FILE}: {e}")),
-    }
 }
 
 // allow mods that are depending on as globals
@@ -188,7 +174,8 @@ fn collect_mod_globals(dir: &Path, names: &mut Vec<String>) -> Result<(), String
 
 #[cfg(test)]
 mod tests {
-    use super::{checker, mod_globals, parse, CONFIG_FILE};
+    use super::{checker, mod_globals, parse};
+    use crate::config::{self, FILE_NAME};
     use selene_lib::lints::Severity;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -208,7 +195,8 @@ mod tests {
     /// lint `code` as if it were in `dir`, returning the non-allowed lint codes and severities
     fn lint(dir: &Path, code: &str) -> Vec<(&'static str, Severity)> {
         let ast = parse(code).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
-        checker(dir)
+        let config = config::load(dir).unwrap().selene().unwrap();
+        checker(dir, config)
             .unwrap()
             .test_on(&ast)
             .into_iter()
@@ -288,21 +276,12 @@ mymod.node = default.node_sound_stone_defaults()"), []);
     fn config_overrides_severity() {
         let dir = dir_with(
             "config",
-            &[(CONFIG_FILE, "[lints]
+            &[(FILE_NAME, "[linter.lints]
 undefined_variable = \"allow\"
 unused_variable = \"deny\"
 ")],
         );
         assert_eq!(lint(&dir, "print(nope)
 local x = 1"), [("unused_variable", Severity::Error)]);
-    }
-
-    #[test]
-    fn invalid_config_is_an_error() {
-        let dir = dir_with("bad-config", &[(CONFIG_FILE, "[lints]
-unused_variable = \"loud\"
-")]);
-        let err = checker(&dir).err().expect("config should be rejected");
-        assert!(err.starts_with(CONFIG_FILE), "{err}");
     }
 }

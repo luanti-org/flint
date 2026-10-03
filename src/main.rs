@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+mod config;
 mod content_type;
 mod format;
 mod lint;
@@ -39,13 +40,21 @@ fn main() {
         std::process::exit(1);
     }
 
+    let config = match config::load(Path::new(".")) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    };
+
     let result = match cli.command {
         Commands::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        Commands::Format => format::run(),
-        Commands::Lint => lint::run(),
+        Commands::Format => format::run(&config),
+        Commands::Lint => lint::run(&config),
         Commands::Modernize => modernize::run(),
     };
 

@@ -8,7 +8,10 @@ clap = { version = "4.6.7", features = ["derive"] }
 codespan = "0.11"
 codespan-reporting = "0.11"
 full_moon = { version = "2.2", features = ["luajit"] }
+globset = "0.4"
+ignore = "0.4"
 polib = "0.3"
 selene-lib = { version = "0.31", default-features = false, features = ["luajit"] }
+serde = { version = "1", features = ["derive"] }
 stylua = { version = "2.5", default-features = false, features = ["luajit"] }
 toml = "0.7"

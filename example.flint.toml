@@ -1,0 +1,40 @@
+# example flint configuration
+#
+# copy this to `flint.toml` in the root of a mod, modpack, game, or texture pack.
+# every key is optional; the values shown here are the defaults.
+
+# passed to selene, see https://kampfkarren.github.io/selene/usage/configuration.html
+# Luanti globals and the names of depended on mods are always allowed.
+# selene's `std` and `exclude` keys aren't supported, use `includes` in [files] instead.
+[linter]
+
+[linter.lints]
+# unused_variable = "allow" # "allow", "warn" or "deny"
+
+[linter.config]
+# empty_if = { comments_count = true }
+
+# passed to StyLua, see https://github.com/JohnnyMorganz/StyLua#options
+# `syntax` isn't supported, LuaJIT is always used.
+[formatter]
+column_width = 120
+line_endings = "Unix"
+indent_type = "Tabs"
+indent_width = 4
+quote_style = "AutoPreferDouble"
+call_parentheses = "Always"
+collapse_simple_statement = "Never"
+space_after_function_names = "Never"
+
+[vcs]
+enabled = true
+# only "git" is supported
+client_kind = "git"
+# respect .gitignore, .ignore, and git exclude files. unlike biome, on by default
+use_ignore_file = true
+
+[files]
+# globs relative to this file. a leading `!` excludes, and the last matching glob wins.
+# hidden files and directories are always skipped
+includes = ["**/*.lua"]
+# includes = ["**/*.lua", "!vendor/**", "vendor/patched.lua"]

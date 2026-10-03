@@ -1,20 +1,13 @@
 //! `flint format`: formats every `.lua` file in a mod with StyLua.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use stylua_lib::{Config, LuaVersion, OutputVerification};
+use stylua_lib::{Config, OutputVerification};
 
-pub fn run() -> Result<(), String> {
-    let config = Config {
-        // luajit == 5.1 + extensions
-        syntax: LuaVersion::LuaJIT,
-        ..Config::default()
-    };
-
-    let mut files = Vec::new();
-    collect_lua_files(Path::new("."), &mut files)?;
-    files.sort();
+pub fn run(flint: &crate::config::Config) -> Result<(), String> {
+    let config = flint.stylua()?;
+    let files = flint.files(Path::new("."))?;
 
     let mut failures = 0;
     for path in &files {
@@ -42,24 +35,6 @@ fn format_file(path: &Path, config: Config) -> Result<(), String> {
     if formatted != code {
         fs::write(path, formatted).map_err(|e| format!("cannot write: {e}"))?;
         println!("formatted {}", path.display());
-    }
-    Ok(())
-}
-
-/// Recursively find `.lua` files, skipping hidden directories such as `.git`.
-pub fn collect_lua_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
-        let path = entry.path();
-        let file_type = entry.file_type().map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-        if file_type.is_dir() {
-            if !entry.file_name().to_string_lossy().starts_with('.') {
-                collect_lua_files(&path, files)?;
-            }
-        } else if file_type.is_file() && path.extension().is_some_and(|ext| ext == "lua") {
-            files.push(path);
-        }
     }
     Ok(())
 }
