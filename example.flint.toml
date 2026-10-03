@@ -10,6 +10,7 @@
 
 [linter.lints]
 # unused_variable = "allow" # "allow", "warn" or "deny"
+# luanti_legacy_physics_override = "warn" # Luanti lints are configured the same way, see docs/lint.md
 
 [linter.config]
 # empty_if = { comments_count = true }
