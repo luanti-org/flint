@@ -47,7 +47,7 @@ fn format_file(path: &Path, config: Config) -> Result<(), String> {
 }
 
 /// Recursively find `.lua` files, skipping hidden directories such as `.git`.
-fn collect_lua_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+pub fn collect_lua_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("cannot read {}: {e}", dir.display()))?;

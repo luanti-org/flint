@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 
 mod content_type;
 mod format;
+mod lint;
 mod modernize;
 mod panic_guard;
 mod parsers;
@@ -24,6 +25,8 @@ enum Commands {
     Version,
     /// Format all Lua files with StyLua (Lua 5.1 + LuaJIT syntax)
     Format,
+    /// Lint all Lua files with selene, aware of Luanti globals
+    Lint,
     /// Migrate legacy mod files to their modern equivalents
     Modernize,
 }
@@ -42,6 +45,7 @@ fn main() {
             Ok(())
         }
         Commands::Format => format::run(),
+        Commands::Lint => lint::run(),
         Commands::Modernize => modernize::run(),
     };
 
