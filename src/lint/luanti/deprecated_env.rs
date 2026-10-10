@@ -76,9 +76,10 @@ impl Visitor for EnvVisitor<'_> {
 fn is_env(suffix: &Suffix) -> bool {
     match suffix {
         Suffix::Index(Index::Dot { name, .. }) => name.token().to_string() == "env",
-        Suffix::Index(Index::Brackets { expression: Expression::String(s), .. }) => {
-            matches!(s.token().token_type(), full_moon::tokenizer::TokenType::StringLiteral { literal, .. } if literal.as_str() == "env")
-        }
+        Suffix::Index(Index::Brackets { expression, .. }) => matches!(
+            &**expression,
+            Expression::String(s) if matches!(s.token().token_type(), full_moon::tokenizer::TokenType::StringLiteral { literal, .. } if literal.as_str() == "env")
+        ),
         _ => false,
     }
 }

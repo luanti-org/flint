@@ -352,9 +352,9 @@ dependencies = [
 
 [[package]]
 name = "full_moon"
-version = "2.2.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a083d6f598bbe9d70e694f2a5cf78f0354678a8c13528da2df6467b089586404"
+checksum = "5bc70b300f9b09c409fa0a68a9f0c3e6b43573e47680d16932a0f8dade11a193"
 dependencies = [
  "bytecount",
  "cfg-if",
@@ -673,9 +673,8 @@ dependencies = [
 
 [[package]]
 name = "selene-lib"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f4c854750711dc44ba42b3697c85d96984fe473634e6cbae84f8488642e0c62"
+version = "0.32.0"
+source = "git+https://github.com/Kampfkarren/selene?tag=0.32.0#77986ebb6bd5ef9406b5dc5b6fb13cb972550833"
 dependencies = [
  "codespan",
  "codespan-reporting",
@@ -791,9 +790,9 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "stylua"
-version = "2.5.2"
+version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de1ff8ec275ef3a0d44845d727368c47ee6f6a04e078bd8bb21c3f8409763d6f"
+checksum = "266dd1a94f4f6743235c61d05836aac3e9ba034dadf9bf27b9f032f266f3b8eb"
 dependencies = [
  "anyhow",
  "cfg-if",
