@@ -1,20 +1,69 @@
 //! Luanti specific lints, add to selene
 
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::Path;
+
 use selene_lib::lints::{AstContext, Context, Diagnostic, Lint, Severity};
 use selene_lib::CheckerConfig;
 use full_moon::node::Node;
 use serde::Deserialize;
 
+use crate::content_type::{self, ContentType};
+use crate::parsers::{mod_conf, settingtypes_txt};
+
 mod deprecated_env;
 mod deprecated_function;
 mod legacy_physics_override;
 mod minetest_global;
+mod missing_settingtype;
+
+/// the mod a linted file belongs to
+#[derive(Debug, Default)]
+pub struct ModInfo {
+    pub name: String,
+    /// settings in the `settingtypes.txt` of the mod, and of the modpacks and game it's in
+    pub settings: BTreeSet<String>,
+}
+
+impl ModInfo {
+    /// the mod containing `file`, if it's in one
+    pub fn find(file: &Path) -> Option<ModInfo> {
+        let file = file.canonicalize().ok()?;
+        let dir = file.ancestors().skip(1).find(|dir| content_type::detect(dir) == ContentType::Mod)?;
+        let name = fs::read_to_string(dir.join(mod_conf::FILE_NAME))
+            .ok()
+            .and_then(|text| mod_conf::parse(&text).name)
+            .or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()))?;
+
+        let mut settings = BTreeSet::new();
+        for (i, dir) in dir.ancestors().enumerate() {
+            let kind = content_type::detect(dir);
+            if i > 0 && !matches!(kind, ContentType::Modpack | ContentType::Game) {
+                continue;
+            }
+            if let Ok(text) = fs::read_to_string(dir.join(settingtypes_txt::FILE_NAME)) {
+                settings.extend(settingtypes_txt::parse(&text));
+            }
+            if kind == ContentType::Game {
+                break;
+            }
+        }
+        Some(ModInfo { name, settings })
+    }
+}
 
 /// a lint with its severity resolved from the config
 pub trait Rule {
     fn name(&self) -> &'static str;
     fn severity(&self) -> Severity;
-    fn pass(&self, ast: &full_moon::ast::Ast, context: &Context, ast_context: &AstContext) -> Vec<Diagnostic>;
+    fn pass(
+        &self,
+        ast: &full_moon::ast::Ast,
+        context: &Context,
+        ast_context: &AstContext,
+        owner: Option<&ModInfo>,
+    ) -> Vec<Diagnostic>;
 }
 
 struct Configured<L> {
@@ -32,7 +81,7 @@ impl<L: Lint> Rule for Configured<L> {
         self.severity
     }
 
-    fn pass(&self, ast: &full_moon::ast::Ast, context: &Context, ast_context: &AstContext) -> Vec<Diagnostic> {
+    fn pass(&self, ast: &full_moon::ast::Ast, context: &Context, ast_context: &AstContext, _: Option<&ModInfo>) -> Vec<Diagnostic> {
         self.lint.pass(ast, context, ast_context)
     }
 }
@@ -44,6 +93,7 @@ pub fn rules(config: &mut CheckerConfig<toml::Value>) -> Result<Vec<Box<dyn Rule
         rule::<deprecated_env::DeprecatedEnvLint>(deprecated_env::NAME, config)?,
         rule::<minetest_global::MinetestGlobalLint>(minetest_global::NAME, config)?,
     ];
+    rules.push(missing_settingtype::rule(config)?);
     rules.extend(deprecated_function::rules(config)?);
     Ok(rules)
 }

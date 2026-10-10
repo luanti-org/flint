@@ -17,6 +17,7 @@ flint adds its own lints on top of selene's. they're configured the same way, in
 | `luanti_legacy_physics_override` | deny | `player:set_physics_override(speed, jump, gravity)` instead of a table, e.g. `player:set_physics_override({ speed = 1.5 })` |
 | `luanti_deprecated_env` | deny | `core.env` or `minetest.env`, on its own or with anything after it. its methods are functions on `core`, e.g. `core.get_node(pos)` instead of `core.env:get_node(pos)` |
 | `luanti_minetest_global` | warn | the `minetest` global instead of `core`, e.g. `core.log("hi")` instead of `minetest.log("hi")` |
+| `luanti_missing_settingtype` | warn | a mod reads its own setting, e.g. `core.settings:get("mymod.speed")`, that isn't in `settingtypes.txt`. only settings named `modname.*` or `modname_*` with a literal name are checked, since others may belong to the engine or other mods. the `settingtypes.txt` of the mod and any modpack or game it's in count |
 | `luanti_deprecated_register_on_auth_fail` | warn | `core.register_on_auth_fail`, use `core.register_on_authplayer` and check `is_success` |
 | `luanti_deprecated_setting_get_pos` | warn | `core.setting_get_pos(name)`, use `core.settings:get_pos(name)` |
 | `luanti_legacy_get_value_noise` | warn | `core.get_value_noise(seeddiff, octaves, persistence, spread)`, pass a noiseparams table |

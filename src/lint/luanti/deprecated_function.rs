@@ -6,7 +6,7 @@ use full_moon::visitors::Visitor;
 use selene_lib::lints::{AstContext, Context, Diagnostic, Label, Severity};
 use selene_lib::CheckerConfig;
 
-use super::Rule;
+use super::{ModInfo, Rule};
 
 enum Kind {
     /// `core.name`, only deprecated when called with more arguments than `max_args`, if set
@@ -152,7 +152,7 @@ impl Rule for DeprecatedRule {
         self.severity
     }
 
-    fn pass(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext) -> Vec<Diagnostic> {
+    fn pass(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext, _: Option<&ModInfo>) -> Vec<Diagnostic> {
         let mut visitor = DeprecatedVisitor { deprecated: self.deprecated, ast_context, diagnostics: Vec::new() };
         visitor.visit_ast(ast);
         visitor.diagnostics
@@ -258,7 +258,7 @@ mod tests {
         let mut diagnostics: Vec<_> = super::rules(&mut CheckerConfig::default())
             .unwrap()
             .iter()
-            .flat_map(|rule| rule.pass(&ast, &context, &ast_context))
+            .flat_map(|rule| rule.pass(&ast, &context, &ast_context, None))
             .collect();
         diagnostics.sort_by_key(|d| d.primary_label.range);
         diagnostics

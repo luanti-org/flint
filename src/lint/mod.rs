@@ -96,7 +96,8 @@ pub fn run(flint: &crate::config::Config) -> Result<(), String> {
             }
         };
 
-        let mut diagnostics = checker.test_on(sources.source(file_id), &ast);
+        let owner = luanti::ModInfo::find(path);
+        let mut diagnostics = checker.test_on(sources.source(file_id), &ast, owner.as_ref());
         diagnostics.sort_by_key(|d| d.diagnostic.start_position());
         for d in diagnostics {
             let severity = match d.severity {
@@ -162,7 +163,7 @@ struct Linter {
 }
 
 impl Linter {
-    fn test_on(&self, code: &str, ast: &full_moon::ast::Ast) -> Vec<CheckerDiagnostic> {
+    fn test_on(&self, code: &str, ast: &full_moon::ast::Ast, owner: Option<&luanti::ModInfo>) -> Vec<CheckerDiagnostic> {
         let filters = filter::Filters::new(ast, |lint| {
             lint_exists(lint) || self.luanti.iter().any(|rule| rule.name() == lint)
         });
@@ -173,7 +174,7 @@ impl Linter {
         for rule in &self.luanti {
             let severity = rule.severity();
             diagnostics.extend(
-                rule.pass(ast, &self.context, &ast_context)
+                rule.pass(ast, &self.context, &ast_context, owner)
                     .into_iter()
                     .map(|diagnostic| CheckerDiagnostic { diagnostic, severity }),
             );
@@ -245,7 +246,7 @@ fn collect_mod_globals(dir: &Path, names: &mut Vec<String>) -> Result<(), String
 
 #[cfg(test)]
 mod tests {
-    use super::{checker, mod_globals, parse};
+    use super::{checker, luanti, mod_globals, parse};
     use crate::config::{self, FILE_NAME};
     use selene_lib::lints::Severity;
     use std::fs;
@@ -267,9 +268,10 @@ mod tests {
     fn lint(dir: &Path, code: &str) -> Vec<(&'static str, Severity)> {
         let ast = parse(code).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let config = config::load(dir).unwrap().selene().unwrap();
+        let owner = luanti::ModInfo::find(&dir.join("init.lua"));
         checker(dir, config)
             .unwrap()
-            .test_on(code, &ast)
+            .test_on(code, &ast, owner.as_ref())
             .into_iter()
             .filter(|d| d.severity != Severity::Allow)
             .map(|d| (d.diagnostic.code, d.severity))
@@ -425,6 +427,25 @@ print(b)
         assert_eq!(lint(&dir, "-- flint: allow(nope)
 print(1)
 "), [("invalid_lint_filter", Severity::Error)]);
+    }
+
+    #[test]
+    fn settings_must_be_in_settingtypes() {
+        let code = "print(core.settings:get(\"mymod.a\"), core.settings:get(\"mymod.b\"), core.settings:get(\"mymod.c\"))";
+        let dir = dir_with(
+            "settingtypes",
+            &[
+                ("game.conf", ""),
+                ("settingtypes.txt", "mymod.a (A) string\n"),
+                ("mods/mymod/mod.conf", "name = mymod\n"),
+                ("mods/mymod/init.lua", ""),
+                ("mods/mymod/settingtypes.txt", "mymod.b (B) string\n"),
+            ],
+        );
+        assert_eq!(lint(&dir.join("mods/mymod"), code), [("luanti_missing_settingtype", Severity::Warning)]);
+        let owner = luanti::ModInfo::find(&dir.join("mods/mymod/init.lua")).unwrap();
+        assert_eq!(owner.name, "mymod");
+        assert_eq!(owner.settings.into_iter().collect::<Vec<_>>(), ["mymod.a", "mymod.b"]);
     }
 
     #[test]
