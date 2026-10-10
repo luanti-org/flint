@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use optivorbis::{OggToOgg, Remuxer};
 use oxipng::{Options, StripChunks};
 
+use crate::annotate::{self, Level};
+
 /// oxipng's own default
 pub const DEFAULT_LEVEL: u8 = 2;
 pub const MAX_LEVEL: u8 = 6;
@@ -28,50 +30,65 @@ impl Media {
     }
 }
 
-pub fn run(flint: &crate::config::Config, level: u8) -> Result<(), String> {
+pub fn run(flint: &crate::config::Config, check: bool) -> Result<(), String> {
     let files = flint.files(Path::new("."), |path| Media::of(path).is_some())?;
-    let options = png_options(level);
+    let options = png_options(flint.compress.level);
 
     let (mut before, mut after) = (0, 0);
-    let mut failures = 0;
+    let (mut compressible, mut failures) = (0, 0);
     for path in &files {
-        match compress_file(path, &options) {
+        match compress_file(path, &options, check) {
             Ok((old, new)) => {
                 before += old;
                 after += new;
+                if new < old {
+                    compressible += 1;
+                }
             }
             Err(e) => {
                 eprintln!("error: {}: {e}", path.display());
+                annotate::emit(Level::Error, path, None, "flint compress", &e);
                 failures += 1;
             }
         }
     }
     if after < before {
-        println!("saved {} bytes ({before} -> {after})", before - after);
+        let verb = if check { "could save" } else { "saved" };
+        println!("{verb} {} bytes ({before} -> {after})", before - after);
     }
 
-    match failures {
-        0 => Ok(()),
-        n => Err(format!("{n} of {} files could not be compressed", files.len())),
+    if failures > 0 {
+        return Err(format!("{failures} of {} files could not be compressed", files.len()));
     }
+    if check && compressible > 0 {
+        return Err(format!("{compressible} of {} files could be compressed", files.len()));
+    }
+    Ok(())
 }
 
 fn png_options(level: u8) -> Options {
     Options {
         strip: StripChunks::Safe,
-        ..Options::from_preset(level.min(MAX_LEVEL))
+        ..Options::from_preset(level)
     }
 }
 
-fn compress_file(path: &Path, options: &Options) -> Result<(usize, usize), String> {
+/// compress `path` in place, or with `check` only report it, returning the size before and after
+fn compress_file(path: &Path, options: &Options, check: bool) -> Result<(usize, usize), String> {
     let data = fs::read(path).map_err(|e| format!("cannot read: {e}"))?;
     let kind = Media::of(path).ok_or("not a png or ogg file")?;
     let compressed = compress(kind, &data, options)?;
     if compressed.len() >= data.len() {
         return Ok((data.len(), data.len()));
     }
-    write_replacing(path, &compressed)?;
-    println!("compressed {}: {} -> {} bytes", path.display(), data.len(), compressed.len());
+    if check {
+        let message = format!("could be compressed: {} -> {} bytes", data.len(), compressed.len());
+        println!("{}: {message}", path.display());
+        annotate::emit(Level::Error, path, None, "flint compress", &message);
+    } else {
+        write_replacing(path, &compressed)?;
+        println!("compressed {}: {} -> {} bytes", path.display(), data.len(), compressed.len());
+    }
     Ok((data.len(), compressed.len()))
 }
 
@@ -150,11 +167,11 @@ mod tests {
         let dir = dir_with("replace", &[("a.png", PNG), ("b.ogg", OGG)]);
         for name in ["a.png", "b.ogg"] {
             let path = dir.join(name);
-            let (before, after) = compress_file(&path, &png_options(2)).unwrap();
+            let (before, after) = compress_file(&path, &png_options(2), false).unwrap();
             assert!(after < before);
             assert_eq!(fs::metadata(&path).unwrap().len(), after as u64);
             // a second run has nothing left to do
-            assert_eq!(compress_file(&path, &png_options(2)).unwrap(), (after, after));
+            assert_eq!(compress_file(&path, &png_options(2), false).unwrap(), (after, after));
         }
         let mut names: Vec<_> = fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
         names.sort();
@@ -162,10 +179,21 @@ mod tests {
     }
 
     #[test]
+    fn check_leaves_files_untouched() {
+        let dir = dir_with("check", &[("a.png", PNG), ("b.ogg", OGG)]);
+        for (name, original) in [("a.png", PNG), ("b.ogg", OGG)] {
+            let path = dir.join(name);
+            let (before, after) = compress_file(&path, &png_options(2), true).unwrap();
+            assert!(after < before);
+            assert_eq!(fs::read(&path).unwrap(), original);
+        }
+    }
+
+    #[test]
     fn broken_file_is_left_untouched() {
         let dir = dir_with("broken", &[("broken.png", b"not a png")]);
         let path = dir.join("broken.png");
-        assert!(compress_file(&path, &png_options(2)).is_err());
+        assert!(compress_file(&path, &png_options(2), false).is_err());
         assert_eq!(fs::read(&path).unwrap(), b"not a png");
     }
 

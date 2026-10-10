@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+mod annotate;
 mod compress;
 mod config;
 mod content_type;
@@ -26,16 +27,20 @@ struct Cli {
 enum Commands {
     Version,
     /// Format all Lua files with StyLua (Lua 5.1 + LuaJIT syntax)
-    Format,
+    Format {
+        /// Don't write changes, fail if any file isn't formatted
+        #[arg(long)]
+        check: bool,
+    },
     /// Lint all Lua files with selene, aware of Luanti globals
     Lint,
     /// Migrate legacy mod files to their modern equivalents
     Modernize,
     /// Losslessly compress PNG textures with oxipng and Ogg Vorbis sounds with OptiVorbis
     Compress {
-        /// oxipng optimization level, higher is smaller but slower
-        #[arg(long, default_value_t = compress::DEFAULT_LEVEL, value_parser = clap::value_parser!(u8).range(0..=compress::MAX_LEVEL as i64))]
-        level: u8,
+        /// Don't write changes, fail if any file could be compressed
+        #[arg(long)]
+        check: bool,
     },
 }
 
@@ -60,10 +65,10 @@ fn main() {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        Commands::Format => format::run(&config),
+        Commands::Format { check } => format::run(&config, check),
         Commands::Lint => lint::run(&config),
         Commands::Modernize => modernize::run(),
-        Commands::Compress { level } => compress::run(&config, level),
+        Commands::Compress { check } => compress::run(&config, check),
     };
 
     if let Err(e) = result {

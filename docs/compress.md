@@ -13,12 +13,19 @@ extensions are matched regardless of case. a file is only modified when the resu
 
 ```sh
 flint compress
-flint compress --level 6 --path path/to/mod
+flint compress --path path/to/mod
+flint compress --check
 ```
 
-| option | default | purpose |
+| option | purpose |
+|---|---|
+| `--check` | don't write anything, list the files that could be compressed and fail if there are any. useful in [CI](ci.md) |
+
+configured by `[compress]` in [flint.toml](config.md):
+
+| key | default | purpose |
 |---|---|---|
-| `--level` | `2` | oxipng optimization level from `0` to `6`. higher is smaller but slower. doesn't affect `.ogg` files |
+| `level` | `2` | oxipng optimization level from `0` to `6`. higher is smaller but slower. doesn't affect `.ogg` files |
 
 files are found the same way as the other commands (see [config](config.md)): only those matching `[files]` `includes` are compressed, hidden files and directories are skipped, and `.gitignore` is respected unless disabled in `[vcs]`. e.g. `includes = ["**", "!textures/vendor/**"]` leaves vendored textures alone.
 

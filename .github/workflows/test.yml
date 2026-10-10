@@ -12,3 +12,29 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked
+
+  action:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          command: lint
+          path: samplemods/media
+      - uses: ./
+        with:
+          command: format
+          path: samplemods/media
+      # the sample media is deliberately uncompressed, so this should fail
+      - id: compress
+        uses: ./
+        continue-on-error: true
+        with:
+          command: compress
+          path: samplemods/media
+      - if: steps.compress.outcome != 'failure'
+        shell: bash
+        run: echo "compress --check should have failed" && exit 1

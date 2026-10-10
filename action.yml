@@ -1,0 +1,57 @@
+name: flint
+description: Format, lint, and compress Luanti mods, games, and texture packs
+branding:
+  icon: check-circle
+  color: orange
+
+inputs:
+  command:
+    description: flint command to run, e.g. lint, format, or compress
+    default: lint
+  path:
+    description: directory to run on, relative to the repository root
+    default: .
+  check:
+    description: pass --check to format and compress, so they fail instead of writing changes
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Hash flint source
+      id: hash
+      shell: bash
+      run: |
+        cd "$GITHUB_ACTION_PATH"
+        if command -v sha256sum > /dev/null; then sum=sha256sum; else sum="shasum -a 256"; fi
+        hash=$(find Cargo.toml Cargo.lock src -type f | LC_ALL=C sort | xargs $sum | $sum | cut -c1-16)
+        echo "hash=$hash" >> "$GITHUB_OUTPUT"
+
+    - name: Cache flint
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/flint
+        key: flint-${{ runner.os }}-${{ runner.arch }}-${{ steps.hash.outputs.hash }}
+
+    - name: Install Rust
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build flint
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: cargo install --locked --path "$GITHUB_ACTION_PATH" --root "$RUNNER_TEMP/flint"
+
+    - name: Run flint
+      shell: bash
+      env:
+        FLINT_COMMAND: ${{ inputs.command }}
+        FLINT_PATH: ${{ inputs.path }}
+        FLINT_CHECK: ${{ inputs.check }}
+      run: |
+        args=("$FLINT_COMMAND" --path "$FLINT_PATH")
+        if [[ "$FLINT_CHECK" == "true" && ( "$FLINT_COMMAND" == "format" || "$FLINT_COMMAND" == "compress" ) ]]; then
+          args+=(--check)
+        fi
+        "$RUNNER_TEMP/flint/bin/flint" "${args[@]}"

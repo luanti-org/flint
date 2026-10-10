@@ -4,13 +4,14 @@ use std::fs;
 use std::io::IsTerminal;
 use std::path::Path;
 
-use codespan_reporting::diagnostic::{Diagnostic, Label, Severity as CodespanSeverity};
+use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity as CodespanSeverity};
 use codespan_reporting::term::{self, termcolor::ColorChoice, termcolor::StandardStream};
 use full_moon::LuaVersion;
 use selene_lib::lints::{AstContext, Context, Severity};
 use selene_lib::standard_library::{Field, FieldKind, StandardLibrary};
 use selene_lib::{lint_exists, Checker, CheckerConfig, CheckerDiagnostic};
 
+use crate::annotate::{self, Level, Span};
 use crate::parsers::{depends_txt, mod_conf};
 
 mod filter;
@@ -62,6 +63,7 @@ pub fn run(flint: &crate::config::Config) -> Result<(), String> {
     let stderr = StandardStream::stderr(color);
     let term_config = term::Config::default();
     let emit = |sources: &codespan::Files<String>, diagnostic: &Diagnostic<codespan::FileId>| {
+        annotate_diagnostic(sources, diagnostic);
         term::emit(&mut stderr.lock(), &term_config, sources, diagnostic).map_err(|e| e.to_string())
     };
 
@@ -71,6 +73,7 @@ pub fn run(flint: &crate::config::Config) -> Result<(), String> {
             Ok(code) => code,
             Err(e) => {
                 eprintln!("error: {}: cannot read: {e}", path.display());
+                annotate::emit(Level::Error, path, None, "flint lint", &format!("cannot read: {e}"));
                 errors += 1;
                 continue;
             }
@@ -116,6 +119,39 @@ pub fn run(flint: &crate::config::Config) -> Result<(), String> {
         0 => Ok(()),
         n => Err(format!("lint found {n} errors")),
     }
+}
+
+/// report `diagnostic` as a GitHub Actions annotation, at its primary label
+fn annotate_diagnostic(sources: &codespan::Files<String>, diagnostic: &Diagnostic<codespan::FileId>) {
+    if !annotate::enabled() {
+        return;
+    }
+    let level = match diagnostic.severity {
+        CodespanSeverity::Bug | CodespanSeverity::Error => Level::Error,
+        CodespanSeverity::Warning => Level::Warning,
+        CodespanSeverity::Note | CodespanSeverity::Help => Level::Notice,
+    };
+    let Some(label) = diagnostic.labels.iter().find(|l| l.style == LabelStyle::Primary) else {
+        return;
+    };
+    let location = |byte: usize| sources.location(label.file_id, byte as u32).ok();
+    let span = location(label.range.start).zip(location(label.range.end)).map(|(start, end)| Span {
+        line: start.line.to_usize() + 1,
+        column: start.column.to_usize() + 1,
+        end_line: end.line.to_usize() + 1,
+        end_column: end.column.to_usize() + 1,
+    });
+
+    let mut message = diagnostic.message.clone();
+    for text in std::iter::once(&label.message).chain(&diagnostic.notes) {
+        if !text.is_empty() {
+            message.push('\n');
+            message.push_str(text);
+        }
+    }
+    let title = diagnostic.code.as_deref().unwrap_or("flint lint");
+    let path = Path::new(sources.name(label.file_id));
+    annotate::emit(level, path, span.as_ref(), title, &message);
 }
 
 struct Linter {

@@ -2,6 +2,7 @@
 //!
 //! * `[linter]` is passed to selene
 //! * `[formatter]` is passed to StyLua
+//! * `[compress]` configures `flint compress`
 //! * `[vcs]` controls whether VCS ignore files are respected
 //! * `[files]` controls which files are operated on, each command then filters on the types it handles
 
@@ -20,8 +21,21 @@ pub const FILE_NAME: &str = "flint.toml";
 pub struct Config {
     linter: toml::Table,
     formatter: toml::Table,
+    pub compress: Compress,
     pub vcs: Vcs,
     pub files: Files,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Compress {
+    pub level: u8,
+}
+
+impl Default for Compress {
+    fn default() -> Self {
+        Compress { level: crate::compress::DEFAULT_LEVEL }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +80,13 @@ pub fn load(dir: &Path) -> Result<Config, String> {
     config.stylua()?;
     config.selene()?;
     config.includes()?;
+    if config.compress.level > crate::compress::MAX_LEVEL {
+        return Err(format!(
+            "{FILE_NAME}: [compress]: `level` must be from 0 to {}, got {}",
+            crate::compress::MAX_LEVEL,
+            config.compress.level
+        ));
+    }
     Ok(config)
 }
 
@@ -189,6 +210,7 @@ mod tests {
         let config = load(&dir).unwrap();
         assert!(config.vcs.enabled && config.vcs.use_ignore_file);
         assert_eq!(config.files.includes, ["**"]);
+        assert_eq!(config.compress.level, crate::compress::DEFAULT_LEVEL);
         assert_eq!(config.stylua().unwrap().syntax, stylua_lib::LuaVersion::LuaJIT);
     }
 
@@ -259,6 +281,12 @@ mod tests {
     }
 
     #[test]
+    fn compress_level_is_configurable() {
+        let dir = dir_with("compress-level", &[(FILE_NAME, "[compress]\nlevel = 6\n")]);
+        assert_eq!(load(&dir).unwrap().compress.level, 6);
+    }
+
+    #[test]
     fn invalid_config_is_an_error() {
         for (name, text) in [
             ("unknown-section", "[nope]\n"),
@@ -269,6 +297,9 @@ mod tests {
             ("linter-std", "[linter]\nstd = \"lua51\"\n"),
             ("formatter-syntax", "[formatter]\nsyntax = \"Lua51\"\n"),
             ("bad-glob", "[files]\nincludes = [\"[\"]\n"),
+            ("compress-level-too-high", "[compress]\nlevel = 7\n"),
+            ("compress-level-negative", "[compress]\nlevel = -1\n"),
+            ("unknown-compress-key", "[compress]\nnope = 1\n"),
         ] {
             let dir = dir_with(name, &[(FILE_NAME, text)]);
             let err = load(&dir).err().unwrap_or_else(|| panic!("{name} should be rejected"));
