@@ -55,7 +55,7 @@ const LUANTI_GLOBALS: &[&str] = &[
 
 pub fn run(flint: &crate::config::Config) -> Result<(), String> {
     let checker = checker(Path::new("."), flint.selene()?)?;
-    let files = flint.files(Path::new("."))?;
+    let files = flint.files(Path::new("."), crate::config::is_lua)?;
 
     let mut sources = codespan::Files::new();
     let color = if std::io::stderr().is_terminal() { ColorChoice::Auto } else { ColorChoice::Never };

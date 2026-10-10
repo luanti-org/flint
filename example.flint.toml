@@ -36,6 +36,7 @@ use_ignore_file = true
 
 [files]
 # globs relative to this file. a leading `!` excludes, and the last matching glob wins.
-# hidden files and directories are always skipped
-includes = ["**/*.lua"]
-# includes = ["**/*.lua", "!vendor/**", "vendor/patched.lua"]
+# hidden files and directories are always skipped.
+# every command only picks the file types it handles from these: .lua for format and lint, .png and .ogg for compress.
+includes = ["**"]
+# includes = ["**", "!vendor/**", "vendor/patched.lua"]

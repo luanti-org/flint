@@ -7,7 +7,7 @@ use stylua_lib::{Config, OutputVerification};
 
 pub fn run(flint: &crate::config::Config) -> Result<(), String> {
     let config = flint.stylua()?;
-    let files = flint.files(Path::new("."))?;
+    let files = flint.files(Path::new("."), crate::config::is_lua)?;
 
     let mut failures = 0;
     for path in &files {

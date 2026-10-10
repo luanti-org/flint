@@ -11,6 +11,6 @@ see [example.flint.toml](https://github.com/luanti-org/flint/blob/master/example
 | `[linter]` | passed to [selene](https://kampfkarren.github.io/selene/usage/configuration.html). `std` and `exclude` aren't supported |
 | `[formatter]` | passed to [stylua](https://github.com/JohnnyMorganz/StyLua#options). `syntax` isn't supported, LuaJIT is always used |
 | `[vcs]` | `enabled`, `client_kind` (only `git`), and `use_ignore_file`. unlike biome, ignore files are respected by default |
-| `[files]` | `includes`: globs of files to operate on, defaulting to `["**/*.lua"]`. a leading `!` excludes, and the last matching glob wins |
+| `[files]` | `includes`: globs of files to operate on, defaulting to `["**"]`. a leading `!` excludes, and the last matching glob wins. each command then only picks the file types it handles: `.lua` for [format](format.md) and [lint](lint.md), `.png` and `.ogg` for [compress](compress.md) |
 
 hidden files and directories are always skipped. `selene.toml`, `stylua.toml`, and `.styluaignore` aren't read.

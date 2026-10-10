@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 
+mod compress;
 mod config;
 mod content_type;
 mod format;
@@ -30,6 +31,12 @@ enum Commands {
     Lint,
     /// Migrate legacy mod files to their modern equivalents
     Modernize,
+    /// Losslessly compress PNG textures with oxipng and Ogg Vorbis sounds with OptiVorbis
+    Compress {
+        /// oxipng optimization level, higher is smaller but slower
+        #[arg(long, default_value_t = compress::DEFAULT_LEVEL, value_parser = clap::value_parser!(u8).range(0..=compress::MAX_LEVEL as i64))]
+        level: u8,
+    },
 }
 
 fn main() {
@@ -56,6 +63,7 @@ fn main() {
         Commands::Format => format::run(&config),
         Commands::Lint => lint::run(&config),
         Commands::Modernize => modernize::run(),
+        Commands::Compress { level } => compress::run(&config, level),
     };
 
     if let Err(e) = result {

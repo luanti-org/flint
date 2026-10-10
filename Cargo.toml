@@ -10,6 +10,8 @@ codespan-reporting = "0.11"
 full_moon = { version = "3.0", features = ["luajit"] }
 globset = "0.4"
 ignore = "0.4"
+optivorbis = "0.3"
+oxipng = { version = "10.2", default-features = false, features = ["parallel"] }
 polib = "0.3"
 selene-lib = { git = "https://github.com/Kampfkarren/selene", tag = "0.32.0", default-features = false, features = ["luajit"] }
 serde = { version = "1", features = ["derive"] }

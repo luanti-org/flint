@@ -3,7 +3,7 @@
 //! * `[linter]` is passed to selene
 //! * `[formatter]` is passed to StyLua
 //! * `[vcs]` controls whether VCS ignore files are respected
-//! * `[files]` controls which files are operated on
+//! * `[files]` controls which files are operated on, each command then filters on the types it handles
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -53,7 +53,7 @@ pub struct Files {
 
 impl Default for Files {
     fn default() -> Self {
-        Files { includes: vec!["**/*.lua".to_string()] }
+        Files { includes: vec!["**".to_string()] }
     }
 }
 
@@ -115,7 +115,7 @@ impl Config {
         Ok(Includes { set, negated })
     }
 
-    pub fn files(&self, root: &Path) -> Result<Vec<PathBuf>, String> {
+    pub fn files(&self, root: &Path, kind: impl Fn(&Path) -> bool) -> Result<Vec<PathBuf>, String> {
         let includes = self.includes()?;
         let use_ignore_file = self.vcs.enabled && self.vcs.use_ignore_file;
         let walker = WalkBuilder::new(root)
@@ -131,13 +131,17 @@ impl Config {
                 continue;
             }
             let relative = entry.path().strip_prefix(root).unwrap_or(entry.path());
-            if includes.is_match(relative) {
+            if kind(relative) && includes.is_match(relative) {
                 files.push(entry.into_path());
             }
         }
         files.sort();
         Ok(files)
     }
+}
+
+pub fn is_lua(path: &Path) -> bool {
+    path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("lua"))
 }
 
 struct Includes {
@@ -153,7 +157,7 @@ impl Includes {
 
 #[cfg(test)]
 mod tests {
-    use super::{load, FILE_NAME};
+    use super::{is_lua, load, FILE_NAME};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -172,7 +176,7 @@ mod tests {
     fn files(dir: &Path) -> Vec<String> {
         load(dir)
             .unwrap()
-            .files(dir)
+            .files(dir, is_lua)
             .unwrap()
             .iter()
             .map(|p| p.strip_prefix(dir).unwrap().to_string_lossy().replace('\\', "/"))
@@ -184,7 +188,7 @@ mod tests {
         let dir = dir_with("defaults", &[]);
         let config = load(&dir).unwrap();
         assert!(config.vcs.enabled && config.vcs.use_ignore_file);
-        assert_eq!(config.files.includes, ["**/*.lua"]);
+        assert_eq!(config.files.includes, ["**"]);
         assert_eq!(config.stylua().unwrap().syntax, stylua_lib::LuaVersion::LuaJIT);
     }
 
@@ -227,14 +231,22 @@ mod tests {
         let dir = dir_with(
             "includes",
             &[
-                (FILE_NAME, "[files]\nincludes = [\"**/*.lua\", \"!vendor/**\", \"vendor/keep.lua\", \"*.luau\"]\n"),
+                (FILE_NAME, "[files]\nincludes = [\"**\", \"!vendor/**\", \"vendor/keep.lua\", \"!*.old.lua\"]\n"),
                 ("init.lua", ""),
-                ("x.luau", ""),
+                ("init.old.lua", ""),
                 ("vendor/lib.lua", ""),
                 ("vendor/keep.lua", ""),
             ],
         );
-        assert_eq!(files(&dir), ["init.lua", "vendor/keep.lua", "x.luau"]);
+        assert_eq!(files(&dir), ["init.lua", "vendor/keep.lua"]);
+    }
+
+    #[test]
+    fn only_files_of_the_requested_kind() {
+        let dir = dir_with("kind", &[("init.lua", ""), ("x.luau", ""), ("textures/a.png", ""), ("readme.txt", "")]);
+        assert_eq!(files(&dir), ["init.lua"]);
+        let pngs = load(&dir).unwrap().files(&dir, |p| p.extension().is_some_and(|e| e == "png")).unwrap();
+        assert_eq!(pngs, [dir.join("textures/a.png")]);
     }
 
     #[test]
