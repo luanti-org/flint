@@ -12,6 +12,10 @@ mod modernize;
 mod panic_guard;
 mod parsers;
 
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[derive(Parser)]
 #[command(about = "format + lint")]
 struct Cli {
@@ -62,7 +66,11 @@ fn main() {
 
     let result = match cli.command {
         Commands::Version => {
-            println!("{}", env!("CARGO_PKG_VERSION"));
+            println!(
+                "{} ({})",
+                env!("CARGO_PKG_VERSION"),
+                env!("FLINT_GIT_HASH")
+            );
             Ok(())
         }
         Commands::Format { check } => format::run(&config, check),
