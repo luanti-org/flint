@@ -79,6 +79,7 @@ pub fn load(dir: &Path) -> Result<Config, String> {
     };
     config.stylua()?;
     config.selene()?;
+    config.globals()?;
     config.includes()?;
     if config.compress.level > crate::compress::MAX_LEVEL {
         return Err(format!(
@@ -103,9 +104,10 @@ impl Config {
         Ok(stylua_lib::Config { syntax: stylua_lib::LuaVersion::LuaJIT, ..config })
     }
 
-    /// selene config from `[linter]`
     pub fn selene(&self) -> Result<CheckerConfig<toml::Value>, String> {
-        let config: CheckerConfig<toml::Value> = toml::Value::Table(self.linter.clone())
+        let mut linter = self.linter.clone();
+        linter.remove("globals");
+        let config: CheckerConfig<toml::Value> = toml::Value::Table(linter)
             .try_into()
             .map_err(|e| format!("{FILE_NAME}: [linter]: {e}"))?;
         if config.std.is_some() {
@@ -115,6 +117,16 @@ impl Config {
             return Err(format!("{FILE_NAME}: [linter]: `exclude` is not supported, use `includes` in [files]"));
         }
         Ok(config)
+    }
+
+    pub fn globals(&self) -> Result<Vec<String>, String> {
+        match self.linter.get("globals") {
+            None => Ok(Vec::new()),
+            Some(value) => value
+                .clone()
+                .try_into()
+                .map_err(|_| format!("{FILE_NAME}: [linter]: `globals` must be an array of strings")),
+        }
     }
 
     fn includes(&self) -> Result<Includes, String> {

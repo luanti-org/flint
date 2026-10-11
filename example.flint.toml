@@ -7,6 +7,8 @@
 # Luanti globals and the names of depended on mods are always allowed.
 # selene's `std` and `exclude` keys aren't supported, use `includes` in [files] instead.
 [linter]
+# extra globals to allow, on top of the Luanti and mod globals
+# globals = ["mylib", "MY_CONSTANT"]
 
 [linter.lints]
 # unused_variable = "allow" # "allow", "warn" or "deny"

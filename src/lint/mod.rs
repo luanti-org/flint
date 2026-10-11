@@ -55,7 +55,7 @@ const LUANTI_GLOBALS: &[&str] = &[
 ];
 
 pub fn run(flint: &crate::config::Config) -> Result<(), String> {
-    let checker = checker(Path::new("."), flint.selene()?)?;
+    let checker = checker(Path::new("."), flint.selene()?, &flint.globals()?)?;
     let files = flint.files(Path::new("."), crate::config::is_lua)?;
 
     let mut sources = codespan::Files::new();
@@ -183,15 +183,16 @@ impl Linter {
     }
 }
 
-/// build a linter for the package in `dir`, using `config` and mod globals
-fn checker(dir: &Path, mut config: CheckerConfig<toml::Value>) -> Result<Linter, String> {
+/// build a linter for the package in `dir`, using `config`, mod globals, and the configured `globals`
+fn checker(dir: &Path, mut config: CheckerConfig<toml::Value>, globals: &[String]) -> Result<Linter, String> {
     let mut std = StandardLibrary::from_name("lua51").expect("selene is missing lua51");
     // selene wrongly requires a second argument, `table.getn` only takes the table
     if let Some(Field { field_kind: FieldKind::Function(getn), .. }) = std.globals.get_mut("table.getn") {
         getn.arguments.truncate(1);
     }
     let mods = mod_globals(dir)?;
-    for name in LUANTI_GLOBALS.iter().copied().chain(mods.iter().map(String::as_str)) {
+    let extra = mods.iter().chain(globals).map(String::as_str);
+    for name in LUANTI_GLOBALS.iter().copied().chain(extra) {
         std.globals
             .insert(name.to_string(), Field::from_field_kind(FieldKind::Any));
     }
@@ -267,9 +268,9 @@ mod tests {
     /// lint `code` as if it were in `dir`, returning the non-allowed lint codes and severities
     fn lint(dir: &Path, code: &str) -> Vec<(&'static str, Severity)> {
         let ast = parse(code).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
-        let config = config::load(dir).unwrap().selene().unwrap();
+        let flint = config::load(dir).unwrap();
         let owner = luanti::ModInfo::find(&dir.join("init.lua"));
-        checker(dir, config)
+        checker(dir, flint.selene().unwrap(), &flint.globals().unwrap())
             .unwrap()
             .test_on(code, &ast, owner.as_ref())
             .into_iter()
@@ -343,6 +344,23 @@ depends = default
         );
         assert_eq!(lint(&dir, "mymod = {}
 mymod.node = default.node_sound_stone_defaults()"), []);
+    }
+
+    #[test]
+    fn configured_globals_are_defined() {
+        let dir = dir_with("configured-globals", &[(FILE_NAME, "[linter]
+globals = [\"mylib\", \"OTHER\"]
+")]);
+        assert_eq!(lint(&dir, "mylib.foo(OTHER)
+print(nope)"), [("undefined_variable", Severity::Error)]);
+    }
+
+    #[test]
+    fn globals_must_be_strings() {
+        let dir = dir_with("bad-globals", &[(FILE_NAME, "[linter]
+globals = \"mylib\"
+")]);
+        assert!(config::load(&dir).is_err());
     }
 
     #[test]

@@ -8,7 +8,7 @@ see [example.flint.toml](https://github.com/luanti-org/flint/blob/master/example
 
 | section | purpose |
 |---|---|
-| `[linter]` | passed to [selene](https://kampfkarren.github.io/selene/usage/configuration.html). `std` and `exclude` aren't supported |
+| `[linter]` | passed to [selene](https://kampfkarren.github.io/selene/usage/configuration.html). `std` and `exclude` aren't supported. flint adds `globals`, an array of extra global names to allow |
 | `[formatter]` | passed to [stylua](https://github.com/JohnnyMorganz/StyLua#options). `syntax` isn't supported, LuaJIT is always used |
 | `[compress]` | `level`: oxipng optimization level from `0` to `6`, defaulting to `2`. see [compress](compress.md) |
 | `[vcs]` | `enabled`, `client_kind` (only `git`), and `use_ignore_file`. unlike biome, ignore files are respected by default |
