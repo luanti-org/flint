@@ -135,7 +135,11 @@ mod tests {
             standard_library: StandardLibrary::from_name("lua51").unwrap(),
             user_set_standard_library: None,
         };
-        let owner = ModInfo { name: "mymod".to_owned(), settings: settings.iter().map(|s| s.to_string()).collect() };
+        let owner = ModInfo {
+            name: "mymod".to_owned(),
+            settings: settings.iter().map(|s| s.to_string()).collect(),
+            ..ModInfo::default()
+        };
         super::rule(&mut CheckerConfig::default())
             .unwrap()
             .pass(&ast, &context, &AstContext::from_ast(&ast), Some(&owner))

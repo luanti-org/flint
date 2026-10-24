@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 use super::fix::Edit;
 use crate::content_type::{self, ContentType};
+use crate::parsers::settings::Settings;
 use crate::parsers::{mod_conf, settingtypes_txt};
 
 mod deprecated_env;
@@ -25,6 +26,20 @@ pub struct ModInfo {
     pub name: String,
     /// settings in the `settingtypes.txt` of the mod, and of the modpacks and game it's in
     pub settings: BTreeSet<String>,
+    /// the highest `min_minetest_version` of the mod, and of the modpacks and game it's in
+    pub min_version: Option<Version>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Version(pub u32, pub u32);
+
+impl Version {
+    pub fn parse(text: &str) -> Option<Version> {
+        let mut parts = text.trim().split('.');
+        let major = parts.next()?.trim().parse().ok()?;
+        let minor = parts.next()?.trim().parse().ok()?;
+        Some(Version(major, minor))
+    }
 }
 
 impl ModInfo {
@@ -37,7 +52,7 @@ impl ModInfo {
             .and_then(|text| mod_conf::parse(&text).name)
             .or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()))?;
 
-        let mut settings = BTreeSet::new();
+        let (mut settings, mut min_version) = (BTreeSet::new(), None);
         for (i, dir) in dir.ancestors().enumerate() {
             let kind = content_type::detect(dir);
             if i > 0 && !matches!(kind, ContentType::Modpack | ContentType::Game) {
@@ -46,11 +61,14 @@ impl ModInfo {
             if let Ok(text) = fs::read_to_string(dir.join(settingtypes_txt::FILE_NAME)) {
                 settings.extend(settingtypes_txt::parse(&text));
             }
+            let conf = kind.conf_file().and_then(|conf| fs::read_to_string(dir.join(conf)).ok());
+            let version = conf.and_then(|text| Version::parse(Settings::parse(&text).get("min_minetest_version")?));
+            min_version = min_version.max(version);
             if kind == ContentType::Game {
                 break;
             }
         }
-        Some(ModInfo { name, settings })
+        Some(ModInfo { name, settings, min_version })
     }
 }
 

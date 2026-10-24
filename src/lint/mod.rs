@@ -576,7 +576,8 @@ print(1)
     fn fixed(dir: &Path, code: &str) -> (String, usize) {
         let flint = config::load(dir).unwrap();
         let linter = checker(dir, flint.selene().unwrap(), &flint.globals().unwrap()).unwrap();
-        fix_code(&linter, code.to_string(), None)
+        let owner = luanti::ModInfo::find(&dir.join("init.lua"));
+        fix_code(&linter, code.to_string(), owner.as_ref())
     }
 
     #[test]
@@ -598,6 +599,40 @@ print(1)
         for code in ["print(p:get_look_pitch(), p:get_look_yaw(), o:get_entity_name())", "print(core.get_perlin(np))"] {
             assert_eq!(fix(code), code);
         }
+    }
+
+    #[test]
+    fn get_perlin_is_fixed_only_for_new_enough_engines() {
+        let code = "print(core.get_perlin(np))";
+        let renamed = "print(core.get_value_noise(np))";
+        let with_conf = |name: &str, conf: &str| {
+            let dir = dir_with(name, &[("mod.conf", conf), ("init.lua", "")]);
+            fixed(&dir, code).0
+        };
+        assert_eq!(with_conf("perlin-none", "name = a\n"), code);
+        assert_eq!(with_conf("perlin-old", "name = a\nmin_minetest_version = 5.11\n"), code);
+        assert_eq!(with_conf("perlin-new", "name = a\nmin_minetest_version = 5.12\n"), renamed);
+        assert_eq!(with_conf("perlin-patch", "name = a\nmin_minetest_version = 5.12.1\n"), renamed);
+        assert_eq!(with_conf("perlin-major", "name = a\nmin_minetest_version = 6.0\n"), renamed);
+        assert_eq!(with_conf("perlin-bad", "name = a\nmin_minetest_version = latest\n"), code);
+    }
+
+    #[test]
+    fn min_version_is_the_highest_of_the_mod_and_its_game() {
+        let dir = dir_with(
+            "min-version",
+            &[
+                ("game.conf", "min_minetest_version = 5.12\n"),
+                ("mods/pack/modpack.conf", "min_minetest_version = 5.4\n"),
+                ("mods/pack/a/mod.conf", "name = a\nmin_minetest_version = 5.10\n"),
+                ("mods/pack/a/init.lua", ""),
+                ("mods/b/mod.conf", "name = b\nmin_minetest_version = 5.13\n"),
+                ("mods/b/init.lua", ""),
+            ],
+        );
+        let min = |path: &str| luanti::ModInfo::find(&dir.join(path)).unwrap().min_version;
+        assert_eq!(min("mods/pack/a/init.lua"), Some(luanti::Version(5, 12)));
+        assert_eq!(min("mods/b/init.lua"), Some(luanti::Version(5, 13)));
     }
 
     #[test]

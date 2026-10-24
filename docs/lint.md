@@ -26,7 +26,7 @@ flint adds its own lints on top of selene's. they're configured the same way, in
 | `luanti_deprecated_register_on_auth_fail` | warn | `core.register_on_auth_fail`, use `core.register_on_authplayer` and check `is_success` |
 | `luanti_deprecated_setting_get_pos` | warn | `core.setting_get_pos(name)`, use `core.settings:get_pos(name)`. fixable where it's called |
 | `luanti_legacy_get_value_noise` | warn | `core.get_value_noise(seeddiff, octaves, persistence, spread)`, pass a noiseparams table |
-| `luanti_deprecated_get_perlin` | warn | `core.get_perlin`, renamed to `core.get_value_noise` |
+| `luanti_deprecated_get_perlin` | warn | `core.get_perlin`, renamed to `core.get_value_noise` in 5.12. fixable when `min_minetest_version` in the conf of the mod, or of a modpack or game it's in, is at least `5.12` |
 | `luanti_deprecated_get_mapgen_params` | warn | `core.get_mapgen_params()`, use `core.get_mapgen_setting(name)` |
 | `luanti_deprecated_set_mapgen_params` | warn | `core.set_mapgen_params(params)`, use `core.set_mapgen_setting(name, value, override)` |
 | `luanti_deprecated_get_node_group` | warn | `core.get_node_group(name, group)`, use `core.get_item_group(name, group)`. fixable |

@@ -6,7 +6,7 @@ use full_moon::visitors::Visitor;
 use selene_lib::lints::{AstContext, Context, Diagnostic, Label, Severity};
 use selene_lib::CheckerConfig;
 
-use super::{Found, ModInfo, Rule};
+use super::{Found, ModInfo, Rule, Version};
 use crate::lint::fix::Edit;
 
 enum Kind {
@@ -20,6 +20,9 @@ enum Kind {
 enum Replacement {
     /// the function or method with this name, called the same way
     Rename(&'static str),
+    /// like `Rename`, but the new name was only added in this engine version, so it's only fixed in mods whose
+    /// `min_minetest_version` is at least that
+    RenameSince(&'static str, Version),
     /// `core.<this>(...)` for `core.function(...)`, only where it's called
     Called(&'static str),
 }
@@ -64,7 +67,8 @@ const DEPRECATED: &[Deprecated] = &[
         kind: Kind::Function { max_args: None },
         message: "renamed to `core.get_value_noise`",
         note: Some("pass it a noiseparams table, positional arguments are deprecated too"),
-        replacement: None,
+        // added in 5.12.0, when `core.get_perlin` became an alias of it in builtin/game/deprecated.lua
+        replacement: Some(Replacement::RenameSince("get_value_noise", Version(5, 12))),
     },
     Deprecated {
         lint: "luanti_deprecated_get_mapgen_params",
@@ -176,8 +180,9 @@ impl Rule for DeprecatedRule {
         self.severity
     }
 
-    fn pass(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext, _: Option<&ModInfo>) -> Vec<Found> {
-        let mut visitor = DeprecatedVisitor { deprecated: self.deprecated, ast_context, found: Vec::new() };
+    fn pass(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext, owner: Option<&ModInfo>) -> Vec<Found> {
+        let min_version = owner.and_then(|owner| owner.min_version);
+        let mut visitor = DeprecatedVisitor { deprecated: self.deprecated, ast_context, min_version, found: Vec::new() };
         visitor.visit_ast(ast);
         visitor.found
     }
@@ -186,6 +191,7 @@ impl Rule for DeprecatedRule {
 struct DeprecatedVisitor<'a> {
     deprecated: &'static Deprecated,
     ast_context: &'a AstContext,
+    min_version: Option<Version>,
     found: Vec<Found>,
 }
 
@@ -221,6 +227,9 @@ impl DeprecatedVisitor<'_> {
         };
         let fix = match deprecated.replacement {
             Some(Replacement::Rename(to)) => Some(Edit { range: super::byte_range(name), text: to.to_owned() }),
+            Some(Replacement::RenameSince(to, since)) if self.min_version >= Some(since) => {
+                Some(Edit { range: super::byte_range(name), text: to.to_owned() })
+            }
             Some(Replacement::Called(to)) if matches!(rest.first(), Some(Suffix::Call(Call::AnonymousCall(_)))) => {
                 Some(Edit { range: super::byte_range(suffixes[0]), text: format!(".{to}") })
             }
