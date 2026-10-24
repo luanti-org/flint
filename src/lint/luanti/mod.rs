@@ -9,6 +9,7 @@ use selene_lib::CheckerConfig;
 use full_moon::node::Node;
 use serde::Deserialize;
 
+use super::fix::Edit;
 use crate::content_type::{self, ContentType};
 use crate::parsers::{mod_conf, settingtypes_txt};
 
@@ -64,12 +65,25 @@ pub trait Rule {
         ast_context: &AstContext,
         owner: Option<&ModInfo>,
     ) -> Vec<Diagnostic>;
+    fn fix(&self, _diagnostic: &Diagnostic, _ast_context: &AstContext) -> Option<Vec<Edit>> {
+        None
+    }
 }
+
+type Fixer = fn(&Diagnostic, &AstContext) -> Option<Vec<Edit>>;
 
 struct Configured<L> {
     name: &'static str,
     lint: L,
     severity: Severity,
+    fix: Option<Fixer>,
+}
+
+impl<L> Configured<L> {
+    fn with_fix(mut self, fix: Fixer) -> Self {
+        self.fix = Some(fix);
+        self
+    }
 }
 
 impl<L: Lint> Rule for Configured<L> {
@@ -84,14 +98,18 @@ impl<L: Lint> Rule for Configured<L> {
     fn pass(&self, ast: &full_moon::ast::Ast, context: &Context, ast_context: &AstContext, _: Option<&ModInfo>) -> Vec<Diagnostic> {
         self.lint.pass(ast, context, ast_context)
     }
+
+    fn fix(&self, diagnostic: &Diagnostic, ast_context: &AstContext) -> Option<Vec<Edit>> {
+        self.fix?(diagnostic, ast_context)
+    }
 }
 
 /// build every Luanti lint, taking their options out of `config` so selene doesn't see them
 pub fn rules(config: &mut CheckerConfig<toml::Value>) -> Result<Vec<Box<dyn Rule>>, String> {
-    let mut rules = vec![
-        rule::<legacy_physics_override::LegacyPhysicsOverrideLint>(legacy_physics_override::NAME, config)?,
-        rule::<deprecated_env::DeprecatedEnvLint>(deprecated_env::NAME, config)?,
-        rule::<minetest_global::MinetestGlobalLint>(minetest_global::NAME, config)?,
+    let mut rules: Vec<Box<dyn Rule>> = vec![
+        Box::new(rule::<legacy_physics_override::LegacyPhysicsOverrideLint>(legacy_physics_override::NAME, config)?),
+        Box::new(rule::<deprecated_env::DeprecatedEnvLint>(deprecated_env::NAME, config)?),
+        Box::new(rule::<minetest_global::MinetestGlobalLint>(minetest_global::NAME, config)?.with_fix(minetest_global::fix)),
     ];
     rules.push(missing_settingtype::rule(config)?);
     rules.extend(deprecated_function::rules(config)?);
@@ -112,7 +130,7 @@ fn luanti_namespace(name: &full_moon::tokenizer::TokenReference, ast_context: &A
     global.then_some(namespace)
 }
 
-fn rule<L>(name: &'static str, config: &mut CheckerConfig<toml::Value>) -> Result<Box<dyn Rule>, String>
+fn rule<L>(name: &'static str, config: &mut CheckerConfig<toml::Value>) -> Result<Configured<L>, String>
 where
     L: Lint + 'static,
     L::Config: Default,
@@ -123,5 +141,5 @@ where
     };
     let lint = L::new(options).map_err(|e| format!("[linter.config] {name}: {e}"))?;
     let severity = config.lints.get(name).map_or(L::SEVERITY, |v| v.to_severity());
-    Ok(Box::new(Configured { name, lint, severity }))
+    Ok(Configured { name, lint, severity, fix: None })
 }

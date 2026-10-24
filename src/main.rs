@@ -8,7 +8,6 @@ mod config;
 mod content_type;
 mod format;
 mod lint;
-mod modernize;
 mod panic_guard;
 mod parsers;
 
@@ -36,9 +35,13 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
-    /// Lint all Lua files with selene, aware of Luanti globals
-    Lint,
-    /// Migrate legacy mod files to their modern equivalents
+    /// Lint all Lua files with selene, aware of Luanti globals, and the package's files
+    Lint {
+        /// Apply safe fixes, e.g. migrating legacy files to their modern equivalents
+        #[arg(long)]
+        write: bool,
+    },
+    /// Migrate legacy mod files to their modern equivalents, same as `lint --write`
     Modernize,
     /// Losslessly compress PNG textures with oxipng and Ogg Vorbis sounds with OptiVorbis
     Compress {
@@ -74,8 +77,8 @@ fn main() {
             Ok(())
         }
         Commands::Format { check } => format::run(&config, check),
-        Commands::Lint => lint::run(&config),
-        Commands::Modernize => modernize::run(),
+        Commands::Lint { write } => lint::run(&config, write),
+        Commands::Modernize => lint::run(&config, true),
         Commands::Compress { check } => compress::run(&config, check),
     };
 

@@ -5,7 +5,9 @@ use full_moon::node::Node;
 use full_moon::tokenizer::{Token, TokenReference, TokenType};
 use full_moon::visitors::Visitor;
 use selene_lib::lints::{Diagnostic, Label, Severity};
-use selene_lib::{CheckerDiagnostic, LintVariation};
+use selene_lib::LintVariation;
+
+use super::Finding;
 
 pub const INVALID: &str = "invalid_lint_filter";
 
@@ -84,8 +86,8 @@ impl Filters {
         Filters { filters, problems }
     }
 
-    pub fn apply(self, diagnostics: Vec<CheckerDiagnostic>, invalid: Severity) -> Vec<CheckerDiagnostic> {
-        let mut diagnostics: Vec<CheckerDiagnostic> = diagnostics
+    pub fn apply(self, findings: Vec<Finding>, invalid: Severity) -> Vec<Finding> {
+        let mut findings: Vec<Finding> = findings
             .into_iter()
             .map(|mut d| {
                 let start = d.diagnostic.start_position() as usize;
@@ -101,8 +103,8 @@ impl Filters {
                 d
             })
             .collect();
-        diagnostics.extend(self.problems.into_iter().map(|diagnostic| CheckerDiagnostic { diagnostic, severity: invalid }));
-        diagnostics
+        findings.extend(self.problems.into_iter().map(|diagnostic| Finding { diagnostic, severity: invalid, fix: None }));
+        findings
     }
 }
 

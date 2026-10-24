@@ -1,4 +1,5 @@
-//! `flint lint`: lint every `.lua` file in a mod with selene, plus Luanti specific lints.
+//! `flint lint`: lint every `.lua` file in a mod with selene, plus Luanti specific lints on its Lua and files.
+//! With `--write`, lints that can be fixed safely are.
 
 use std::fs;
 use std::io::IsTerminal;
@@ -7,15 +8,22 @@ use std::path::Path;
 use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity as CodespanSeverity};
 use codespan_reporting::term::{self, termcolor::ColorChoice, termcolor::StandardStream};
 use full_moon::LuaVersion;
-use selene_lib::lints::{AstContext, Context, Severity};
+use selene_lib::lints::{self, AstContext, Context, Severity};
 use selene_lib::standard_library::{Field, FieldKind, StandardLibrary};
-use selene_lib::{lint_exists, Checker, CheckerConfig, CheckerDiagnostic};
+use selene_lib::{lint_exists, Checker, CheckerConfig};
 
 use crate::annotate::{self, Level, Span};
 use crate::parsers::{depends_txt, mod_conf};
 
 mod filter;
+pub(crate) mod fix;
 mod luanti;
+mod package;
+
+/// with `--write`, fixes are applied and the file linted again until nothing changes, at most this many times
+const MAX_FIX_PASSES: usize = 10;
+
+const FIXABLE_NOTE: &str = "fixable with `flint lint --write`";
 
 /// globals provided by Luanti and LuaJIT on top of Lua 5.1
 const LUANTI_GLOBALS: &[&str] = &[
@@ -54,8 +62,8 @@ const LUANTI_GLOBALS: &[&str] = &[
     "table.shuffle",
 ];
 
-pub fn run(flint: &crate::config::Config) -> Result<(), String> {
-    let checker = checker(Path::new("."), flint.selene()?, &flint.globals()?)?;
+pub fn run(flint: &crate::config::Config, write: bool) -> Result<(), String> {
+    let linter = checker(Path::new("."), flint.selene()?, &flint.globals()?)?;
     let files = flint.files(Path::new("."), crate::config::is_lua)?;
 
     let mut sources = codespan::Files::new();
@@ -67,17 +75,40 @@ pub fn run(flint: &crate::config::Config) -> Result<(), String> {
         term::emit(&mut stderr.lock(), &term_config, sources, diagnostic).map_err(|e| e.to_string())
     };
 
-    let (mut errors, mut warnings) = (0, 0);
+    let (mut errors, mut warnings, mut fixes) = (0, 0, 0);
+    let mut count = |severity: Severity| match severity {
+        Severity::Allow => None,
+        Severity::Error => {
+            errors += 1;
+            Some(CodespanSeverity::Error)
+        }
+        Severity::Warning => {
+            warnings += 1;
+            Some(CodespanSeverity::Warning)
+        }
+    };
+
     for path in &files {
-        let code = match fs::read_to_string(path) {
+        let mut code = match fs::read_to_string(path) {
             Ok(code) => code,
             Err(e) => {
                 eprintln!("error: {}: cannot read: {e}", path.display());
                 annotate::emit(Level::Error, path, None, "flint lint", &format!("cannot read: {e}"));
-                errors += 1;
+                count(Severity::Error);
                 continue;
             }
         };
+        let owner = luanti::ModInfo::find(path);
+
+        if write {
+            let (fixed, applied) = fix_code(&linter, code.clone(), owner.as_ref());
+            if applied > 0 {
+                fs::write(path, &fixed).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+                println!("fixed {applied} issues in {}", path.display());
+                fixes += applied;
+                code = fixed;
+            }
+        }
         let file_id = sources.add(path.display().to_string(), code);
 
         let ast = match parse(sources.source(file_id)) {
@@ -90,36 +121,97 @@ pub fn run(flint: &crate::config::Config) -> Result<(), String> {
                         .with_message(e.error_message())
                         .with_labels(vec![Label::primary(file_id, start.bytes()..end.bytes())]);
                     emit(&sources, &diagnostic)?;
-                    errors += 1;
+                    count(Severity::Error);
                 }
                 continue;
             }
         };
 
-        let owner = luanti::ModInfo::find(path);
-        let mut diagnostics = checker.test_on(sources.source(file_id), &ast, owner.as_ref());
-        diagnostics.sort_by_key(|d| d.diagnostic.start_position());
-        for d in diagnostics {
-            let severity = match d.severity {
-                Severity::Allow => continue,
-                Severity::Error => {
-                    errors += 1;
-                    CodespanSeverity::Error
-                }
-                Severity::Warning => {
-                    warnings += 1;
-                    CodespanSeverity::Warning
-                }
-            };
-            emit(&sources, &d.diagnostic.into_codespan_diagnostic(file_id, severity))?;
+        let mut findings = linter.test_on(sources.source(file_id), &ast, owner.as_ref());
+        findings.sort_by_key(|f| f.diagnostic.start_position());
+        for finding in findings {
+            let Some(severity) = count(finding.severity) else { continue };
+            let mut diagnostic = finding.diagnostic.into_codespan_diagnostic(file_id, severity);
+            if finding.fix.is_some() {
+                diagnostic.notes.push(FIXABLE_NOTE.to_owned());
+            }
+            emit(&sources, &diagnostic)?;
         }
     }
 
+    for (dir, kind) in package::packages(Path::new(""))? {
+        for rule in &linter.package {
+            if rule.severity == Severity::Allow {
+                continue;
+            }
+            let problems = match rule.check(&dir, kind) {
+                Ok(problems) => problems,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    annotate::emit(Level::Error, &dir, None, rule.name, &e);
+                    count(Severity::Error);
+                    continue;
+                }
+            };
+            for problem in problems {
+                let fixable = problem.fix.is_some();
+                if let Some(fix) = problem.fix.filter(|_| write) {
+                    match fix.apply() {
+                        Ok(()) => fixes += 1,
+                        Err(e) => {
+                            eprintln!("error: {e}");
+                            annotate::emit(Level::Error, &problem.path, None, rule.name, &e);
+                            count(Severity::Error);
+                        }
+                    }
+                    continue;
+                }
+                let Some(severity) = count(rule.severity) else { continue };
+                let text = fs::read_to_string(&problem.path).unwrap_or_default();
+                let file_id = sources.add(problem.path.display().to_string(), text);
+                let mut diagnostic = Diagnostic::new(severity)
+                    .with_code(rule.name)
+                    .with_message(problem.message)
+                    .with_labels(vec![Label::primary(file_id, 0..0)]);
+                if fixable {
+                    diagnostic.notes.push(FIXABLE_NOTE.to_owned());
+                }
+                emit(&sources, &diagnostic)?;
+            }
+        }
+    }
+
+    if write {
+        println!("fixed {fixes} issues");
+    }
     println!("{errors} errors, {warnings} warnings in {} files", files.len());
     match errors {
         0 => Ok(()),
         n => Err(format!("lint found {n} errors")),
     }
+}
+
+/// `code` with every fixable lint fixed, and how many fixes were applied
+fn fix_code(linter: &Linter, mut code: String, owner: Option<&luanti::ModInfo>) -> (String, usize) {
+    let mut applied = 0;
+    for _ in 0..MAX_FIX_PASSES {
+        let Ok(ast) = parse(&code) else { break };
+        let edits: Vec<fix::Edit> = linter
+            .test_on(&code, &ast, owner)
+            .into_iter()
+            .filter(|f| f.severity != Severity::Allow)
+            .filter_map(|f| f.fix)
+            .flatten()
+            .collect();
+        let (fixed, count) = fix::apply(&code, edits);
+        // never keep a fix that breaks the file
+        if count == 0 || fixed == code || parse(&fixed).is_err() {
+            break;
+        }
+        code = fixed;
+        applied += count;
+    }
+    (code, applied)
 }
 
 /// report `diagnostic` as a GitHub Actions annotation, at its primary label
@@ -155,31 +247,43 @@ fn annotate_diagnostic(sources: &codespan::Files<String>, diagnostic: &Diagnosti
     annotate::emit(level, path, span.as_ref(), title, &message);
 }
 
+/// a lint found in Lua code, with the edits that fix it if it can be fixed
+struct Finding {
+    diagnostic: lints::Diagnostic,
+    severity: Severity,
+    fix: Option<Vec<fix::Edit>>,
+}
+
 struct Linter {
     selene: Checker<toml::Value>,
     luanti: Vec<Box<dyn luanti::Rule>>,
+    package: Vec<package::Rule>,
     context: Context,
     invalid_filter: Severity,
 }
 
 impl Linter {
-    fn test_on(&self, code: &str, ast: &full_moon::ast::Ast, owner: Option<&luanti::ModInfo>) -> Vec<CheckerDiagnostic> {
+    fn test_on(&self, code: &str, ast: &full_moon::ast::Ast, owner: Option<&luanti::ModInfo>) -> Vec<Finding> {
         let filters = filter::Filters::new(ast, |lint| {
             lint_exists(lint) || self.luanti.iter().any(|rule| rule.name() == lint)
         });
         let hidden = filter::hide_from_selene(code, ast).and_then(|code| parse(&code).ok());
-        let mut diagnostics = self.selene.test_on(hidden.as_ref().unwrap_or(ast));
+        let mut findings: Vec<Finding> = self
+            .selene
+            .test_on(hidden.as_ref().unwrap_or(ast))
+            .into_iter()
+            .map(|d| Finding { diagnostic: d.diagnostic, severity: d.severity, fix: None })
+            .collect();
 
         let ast_context = AstContext::from_ast(ast);
         for rule in &self.luanti {
             let severity = rule.severity();
-            diagnostics.extend(
-                rule.pass(ast, &self.context, &ast_context, owner)
-                    .into_iter()
-                    .map(|diagnostic| CheckerDiagnostic { diagnostic, severity }),
-            );
+            findings.extend(rule.pass(ast, &self.context, &ast_context, owner).into_iter().map(|diagnostic| {
+                let fix = rule.fix(&diagnostic, &ast_context);
+                Finding { diagnostic, severity, fix }
+            }));
         }
-        filters.apply(diagnostics, self.invalid_filter)
+        filters.apply(findings, self.invalid_filter)
     }
 }
 
@@ -197,10 +301,11 @@ fn checker(dir: &Path, mut config: CheckerConfig<toml::Value>, globals: &[String
             .insert(name.to_string(), Field::from_field_kind(FieldKind::Any));
     }
     let luanti = luanti::rules(&mut config)?;
+    let package = package::rules(&mut config)?;
     let context = Context { standard_library: std.clone(), user_set_standard_library: None };
     let invalid_filter = config.lints.get(filter::INVALID).map_or(Severity::Error, |v| v.to_severity());
     let selene = Checker::new(config, std).map_err(|e| e.to_string())?;
-    Ok(Linter { selene, luanti, context, invalid_filter })
+    Ok(Linter { selene, luanti, package, context, invalid_filter })
 }
 
 pub(crate) fn parse(code: &str) -> Result<full_moon::ast::Ast, Vec<full_moon::Error>> {
@@ -247,7 +352,7 @@ fn collect_mod_globals(dir: &Path, names: &mut Vec<String>) -> Result<(), String
 
 #[cfg(test)]
 mod tests {
-    use super::{checker, luanti, mod_globals, parse};
+    use super::{checker, fix_code, luanti, mod_globals, parse};
     use crate::config::{self, FILE_NAME};
     use selene_lib::lints::Severity;
     use std::fs;
@@ -464,6 +569,31 @@ print(1)
         let owner = luanti::ModInfo::find(&dir.join("mods/mymod/init.lua")).unwrap();
         assert_eq!(owner.name, "mymod");
         assert_eq!(owner.settings.into_iter().collect::<Vec<_>>(), ["mymod.a", "mymod.b"]);
+    }
+
+    /// `code` fixed as if it were in `dir`, and how many fixes were applied
+    fn fixed(dir: &Path, code: &str) -> (String, usize) {
+        let flint = config::load(dir).unwrap();
+        let linter = checker(dir, flint.selene().unwrap(), &flint.globals().unwrap()).unwrap();
+        fix_code(&linter, code.to_string(), None)
+    }
+
+    #[test]
+    fn fixes_are_applied() {
+        let dir = dir_with("fix", &[]);
+        assert_eq!(fixed(&dir, "minetest.log(minetest)\n"), ("core.log(core)\n".to_string(), 2));
+        assert_eq!(fixed(&dir, "core.log(1)\n"), ("core.log(1)\n".to_string(), 0));
+    }
+
+    #[test]
+    fn allowed_lints_are_not_fixed() {
+        let dir = dir_with("fix-filtered", &[]);
+        let code = "-- flint: allow(luanti_minetest_global)\nminetest.log(1)\nminetest.log(2)\n";
+        let expected = "-- flint: allow(luanti_minetest_global)\nminetest.log(1)\ncore.log(2)\n";
+        assert_eq!(fixed(&dir, code), (expected.to_string(), 1));
+
+        let dir = dir_with("fix-allowed", &[(FILE_NAME, "[linter.lints]\nluanti_minetest_global = \"allow\"\n")]);
+        assert_eq!(fixed(&dir, "minetest.log(1)\n").1, 0);
     }
 
     #[test]

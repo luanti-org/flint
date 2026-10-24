@@ -1,4 +1,4 @@
-//! `locale/*.tr` into gettext `locale/*.po`.
+//! `luanti_legacy_tr_translation`: `locale/*.tr`, fixed by converting them to gettext `locale/*.po`.
 
 use std::collections::{BTreeMap, HashSet};
 use std::io::BufWriter;
@@ -9,38 +9,55 @@ use polib::message::Message;
 use polib::metadata::CatalogMetadata;
 use polib::po_file;
 
-use super::{Plan, list_dir, plural_forms, read_optional};
+use super::{Fix, Problem, list_dir, plural_forms, read_optional};
+use crate::content_type::ContentType;
 use crate::parsers::tr;
+
+pub const NAME: &str = "luanti_legacy_tr_translation";
 
 const LOCALE_DIR: &str = "locale";
 
-pub(super) fn plan(plan: &mut Plan, dir: &Path) -> Result<(), String> {
+pub(super) fn check(dir: &Path, _: ContentType) -> Result<Vec<Problem>, String> {
+    let mut problems = Vec::new();
     for tr_path in tr_files(&dir.join(LOCALE_DIR))? {
-        let name = tr_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-        let stem = name.strip_suffix(".tr").unwrap_or(name);
-        let (Some(domain), Some((_, lang))) = (stem.split('.').next(), stem.rsplit_once('.')) else {
-            return Err(format!("{}: name must be <textdomain>.<lang>.tr", tr_path.display()));
+        let (message, fix) = match convert(&tr_path)? {
+            Ok(fix) => ("`.tr` translations are deprecated, use gettext `.po`".to_string(), Some(fix)),
+            Err(e) => (format!("`.tr` translations are deprecated, and this can't be converted to `.po`: {e}"), None),
         };
-        let po_path = tr_path.with_file_name(format!("{stem}.po"));
+        problems.push(Problem { path: tr_path, message, fix });
+    }
+    Ok(problems)
+}
 
-        let text = read_optional(&tr_path)?.unwrap_or_default();
-        let tr = tr::parse(&text).map_err(|e| format!("{}: {e}", tr_path.display()))?;
-        let catalog = build_catalog(&tr, domain, lang).map_err(|e| format!("{}: {e}", tr_path.display()))?;
+fn convert(tr_path: &Path) -> Result<Result<Fix, String>, String> {
+    let name = tr_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let stem = name.strip_suffix(".tr").unwrap_or(name);
+    let (Some(domain), Some((_, lang))) = (stem.split('.').next(), stem.rsplit_once('.')) else {
+        return Ok(Err("name must be <textdomain>.<lang>.tr".to_string()));
+    };
+    let po_path = tr_path.with_file_name(format!("{stem}.po"));
 
-        match read_optional(&po_path)? {
-            None => plan.write(&po_path, render(&catalog)?),
-            Some(existing) => {
-                let existing = parse_po(&existing)
-                    .map_err(|e| format!("cannot compare with {}: {e}", po_path.display()))?;
-                let (ours, theirs) = (translations(&catalog, domain), translations(&existing, domain));
-                if ours != theirs {
-                    return Err(format!("{} does not match {}", tr_path.display(), po_path.display()));
-                }
+    let text = read_optional(tr_path)?.unwrap_or_default();
+    let catalog = match tr::parse(&text).and_then(|tr| build_catalog(&tr, domain, lang)) {
+        Ok(catalog) => catalog,
+        Err(e) => return Ok(Err(e)),
+    };
+
+    let mut fix = Fix::default();
+    match read_optional(&po_path)? {
+        None => fix.write(&po_path, render(&catalog)?),
+        Some(existing) => {
+            let existing = match parse_po(&existing) {
+                Ok(existing) => existing,
+                Err(e) => return Ok(Err(format!("cannot compare with {}: {e}", po_path.display()))),
+            };
+            if translations(&catalog, domain) != translations(&existing, domain) {
+                return Ok(Err(format!("does not match {}", po_path.display())));
             }
         }
-        plan.migrate(tr_path, po_path);
     }
-    Ok(())
+    fix.migrate(tr_path, po_path);
+    Ok(Ok(fix))
 }
 
 fn tr_files(locale_dir: &Path) -> Result<Vec<PathBuf>, String> {
