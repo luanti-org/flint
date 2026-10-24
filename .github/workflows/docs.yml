@@ -1,0 +1,39 @@
+name: docs
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-submodule
+  cancel-in-progress: false
+
+jobs:
+  update-submodule:
+    if: github.repository == 'luanti-org/flint'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: luanti-org/docs.luanti.org
+          ssh-key: ${{ secrets.DOCS_FLINT_DEPLOY_KEY }}
+
+      - name: update external/flint
+        run: |
+          if [ "$(git rev-parse HEAD:external/flint)" = "$GITHUB_SHA" ]; then
+            echo "submodule already at $GITHUB_SHA"
+            exit 0
+          fi
+          git update-index --cacheinfo "160000,$GITHUB_SHA,external/flint"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update flint submodule to ${GITHUB_SHA::7}" \
+            -m "https://github.com/luanti-org/flint/commit/$GITHUB_SHA"
+          for i in 1 2 3; do
+            git push origin HEAD:master && exit 0
+            git pull --rebase origin master
+          done
+          exit 1
