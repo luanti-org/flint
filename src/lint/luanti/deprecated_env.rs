@@ -1,4 +1,4 @@
-//! `luanti_deprecated_env`: `core.env` or `minetest.env`
+//! `luanti_deprecated_env`: `core.env` or `minetest.env`, fixed by dropping the `env` when something follows it
 
 use std::convert::Infallible;
 
@@ -6,6 +6,9 @@ use full_moon::ast::{self, Expression, Index, Prefix, Suffix};
 use full_moon::node::Node;
 use full_moon::visitors::Visitor;
 use selene_lib::lints::{AstContext, Context, Diagnostic, Label, Lint, LintType, Severity};
+
+use super::{Fixable, Found};
+use crate::lint::fix::Edit;
 
 pub const NAME: &str = "luanti_deprecated_env";
 
@@ -22,16 +25,22 @@ impl Lint for DeprecatedEnvLint {
         Ok(DeprecatedEnvLint)
     }
 
-    fn pass(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext) -> Vec<Diagnostic> {
-        let mut visitor = EnvVisitor { ast_context, diagnostics: Vec::new() };
+    fn pass(&self, ast: &ast::Ast, context: &Context, ast_context: &AstContext) -> Vec<Diagnostic> {
+        super::diagnostics(self.pass_with_fixes(ast, context, ast_context))
+    }
+}
+
+impl Fixable for DeprecatedEnvLint {
+    fn pass_with_fixes(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext) -> Vec<Found> {
+        let mut visitor = EnvVisitor { ast_context, found: Vec::new() };
         visitor.visit_ast(ast);
-        visitor.diagnostics
+        visitor.found
     }
 }
 
 struct EnvVisitor<'a> {
     ast_context: &'a AstContext,
-    diagnostics: Vec<Diagnostic>,
+    found: Vec<Found>,
 }
 
 impl EnvVisitor<'_> {
@@ -41,24 +50,38 @@ impl EnvVisitor<'_> {
         let Some(namespace) = super::luanti_namespace(name, self.ast_context) else { return };
         let start = name.start_position().map_or(0, |p| p.bytes());
 
-        let note = match suffixes.next() {
-            Some(Suffix::Call(ast::Call::MethodCall(call))) => format!(
-                "try: core.{}{}",
-                call.name().token(),
-                call.args().to_string().trim_end()
+        let env_start = super::byte_range(env).start;
+        // `core.env:f(...)` is `core.f(...)` and `core.env.x` is `core.x`, so drop the `env`. On its own its
+        // methods would be called with the wrong `self`, so that can't be fixed.
+        let (note, fix) = match suffixes.next() {
+            Some(Suffix::Call(ast::Call::MethodCall(call))) => {
+                let note = format!("try: core.{}{}", call.name().token(), call.args().to_string().trim_end());
+                let range = env_start..super::byte_range(call.name()).start;
+                (note, Some(vec![Edit { range, text: ".".to_owned() }]))
+            }
+            Some(next @ Suffix::Index(index)) => {
+                let note = match index {
+                    Index::Dot { name, .. } => format!("try: core.{}", name.token()),
+                    _ => format!("try: core{}", next.to_string().trim()),
+                };
+                let range = env_start..super::byte_range(next).start;
+                (note, Some(vec![Edit { range, text: String::new() }]))
+            }
+            _ => (
+                "its methods are functions on `core`, e.g. `core.get_node(pos)` instead of `core.env:get_node(pos)`"
+                    .to_owned(),
+                None,
             ),
-            Some(Suffix::Index(Index::Dot { name, .. })) => format!("try: core.{}", name.token()),
-            _ => "its methods are functions on `core`, e.g. `core.get_node(pos)` instead of `core.env:get_node(pos)`"
-                .to_owned(),
         };
         let end = env.end_position().map_or(start, |p| p.bytes());
-        self.diagnostics.push(Diagnostic::new_complete(
+        let diagnostic = Diagnostic::new_complete(
             NAME,
             format!("`{namespace}.env` is deprecated, use `core` instead"),
             Label::new((start, end)),
             vec![note],
             Vec::new(),
-        ));
+        );
+        self.found.push(Found { diagnostic, fix });
     }
 }
 

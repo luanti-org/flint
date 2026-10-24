@@ -5,6 +5,7 @@ use std::convert::Infallible;
 use full_moon::ast;
 use selene_lib::lints::{AstContext, Context, Diagnostic, Label, Lint, LintType, Severity};
 
+use super::{Fixable, Found};
 use crate::lint::fix::Edit;
 
 pub const NAME: &str = "luanti_minetest_global";
@@ -22,7 +23,13 @@ impl Lint for MinetestGlobalLint {
         Ok(MinetestGlobalLint)
     }
 
-    fn pass(&self, _: &ast::Ast, _: &Context, ast_context: &AstContext) -> Vec<Diagnostic> {
+    fn pass(&self, ast: &ast::Ast, context: &Context, ast_context: &AstContext) -> Vec<Diagnostic> {
+        super::diagnostics(self.pass_with_fixes(ast, context, ast_context))
+    }
+}
+
+impl Fixable for MinetestGlobalLint {
+    fn pass_with_fixes(&self, _: &ast::Ast, _: &Context, ast_context: &AstContext) -> Vec<Found> {
         let mut diagnostics: Vec<Diagnostic> = ast_context
             .scope_manager
             .references
@@ -40,10 +47,13 @@ impl Lint for MinetestGlobalLint {
         diagnostics.sort_by_key(|d| d.primary_label.range);
         diagnostics.dedup_by_key(|d| d.primary_label.range);
         diagnostics
+            .into_iter()
+            .map(|diagnostic| Found { fix: fix(&diagnostic, ast_context), diagnostic })
+            .collect()
     }
 }
 
-pub fn fix(diagnostic: &Diagnostic, ast_context: &AstContext) -> Option<Vec<Edit>> {
+fn fix(diagnostic: &Diagnostic, ast_context: &AstContext) -> Option<Vec<Edit>> {
     if ast_context.scope_manager.variables.iter().any(|(_, variable)| variable.name == "core") {
         return None;
     }
@@ -53,7 +63,7 @@ pub fn fix(diagnostic: &Diagnostic, ast_context: &AstContext) -> Option<Vec<Edit
 
 #[cfg(test)]
 mod tests {
-    use super::{fix, MinetestGlobalLint, NAME};
+    use super::{Fixable, MinetestGlobalLint, NAME};
     use selene_lib::lints::{AstContext, Context, Lint};
     use selene_lib::standard_library::StandardLibrary;
 
@@ -93,9 +103,9 @@ mod tests {
             user_set_standard_library: None,
         };
         let edits = MinetestGlobalLint
-            .pass(&ast, &context, &ast_context)
-            .iter()
-            .filter_map(|d| fix(d, &ast_context))
+            .pass_with_fixes(&ast, &context, &ast_context)
+            .into_iter()
+            .filter_map(|f| f.fix)
             .flatten()
             .collect();
         crate::lint::fix::apply(code, edits).0

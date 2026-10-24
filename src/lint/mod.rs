@@ -278,10 +278,11 @@ impl Linter {
         let ast_context = AstContext::from_ast(ast);
         for rule in &self.luanti {
             let severity = rule.severity();
-            findings.extend(rule.pass(ast, &self.context, &ast_context, owner).into_iter().map(|diagnostic| {
-                let fix = rule.fix(&diagnostic, &ast_context);
-                Finding { diagnostic, severity, fix }
-            }));
+            findings.extend(
+                rule.pass(ast, &self.context, &ast_context, owner)
+                    .into_iter()
+                    .map(|found| Finding { diagnostic: found.diagnostic, severity, fix: found.fix }),
+            );
         }
         filters.apply(findings, self.invalid_filter)
     }
@@ -583,6 +584,41 @@ print(1)
         let dir = dir_with("fix", &[]);
         assert_eq!(fixed(&dir, "minetest.log(minetest)\n"), ("core.log(core)\n".to_string(), 2));
         assert_eq!(fixed(&dir, "core.log(1)\n"), ("core.log(1)\n".to_string(), 0));
+    }
+
+    #[test]
+    fn deprecated_functions_are_fixed() {
+        let dir = dir_with("fix-deprecated", &[]);
+        let fix = |code: &str| fixed(&dir, code).0;
+        assert_eq!(fix("p:add_player_velocity(p:get_player_velocity())"), "p:add_velocity(p:get_velocity())");
+        assert_eq!(fix("p:set_look_pitch(1)\np:set_look_yaw(2)"), "p:set_look_vertical(1)\np:set_look_horizontal(2)");
+        assert_eq!(fix("print(core.get_node_group(n, g))\nlocal f = core.get_node_group"), "print(core.get_item_group(n, g))\nlocal f = core.get_item_group");
+        assert_eq!(fix("print(core.setting_get_pos(\"a\"))"), "print(core.settings:get_pos(\"a\"))");
+        assert_eq!(fix("local f = core.setting_get_pos"), "local f = core.setting_get_pos");
+        for code in ["print(p:get_look_pitch(), p:get_look_yaw(), o:get_entity_name())", "print(core.get_perlin(np))"] {
+            assert_eq!(fix(code), code);
+        }
+    }
+
+    #[test]
+    fn env_is_fixed() {
+        let dir = dir_with("fix-env", &[]);
+        let fix = |code: &str| fixed(&dir, code).0;
+        assert_eq!(fix("print(core.env:get_node(pos))"), "print(core.get_node(pos))");
+        assert_eq!(fix("print(core.env.registered_nodes, core[\"env\"][\"x\"])"), "print(core.registered_nodes, core[\"x\"])");
+        assert_eq!(fix("local env = core.env\nprint(env)"), "local env = core.env\nprint(env)");
+        assert_eq!(fixed(&dir, "print(minetest.env:get_node(pos))"), ("print(core.get_node(pos))".to_string(), 2));
+    }
+
+    #[test]
+    fn physics_override_is_fixed() {
+        let dir = dir_with("fix-physics", &[]);
+        let fix = |code: &str| fixed(&dir, code).0;
+        assert_eq!(fix("p:set_physics_override(1.5, nil, g)"), "p:set_physics_override({ speed = 1.5, gravity = g })");
+        assert_eq!(fix("p:set_physics_override(2)"), "p:set_physics_override({ speed = 2 })");
+        for code in ["p:set_physics_override(1, f())", "local function f(...) p:set_physics_override(1, ...) end", "p:set_physics_override(1, 1, 1, true)"] {
+            assert_eq!(fix(code), code);
+        }
     }
 
     #[test]

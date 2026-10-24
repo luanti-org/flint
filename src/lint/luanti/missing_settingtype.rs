@@ -5,7 +5,7 @@ use full_moon::visitors::Visitor;
 use selene_lib::lints::{AstContext, Context, Diagnostic, Label, Severity};
 use selene_lib::CheckerConfig;
 
-use super::{ModInfo, Rule};
+use super::{Found, ModInfo, Rule};
 
 pub const NAME: &str = "luanti_missing_settingtype";
 
@@ -43,11 +43,11 @@ impl Rule for MissingSettingtypeRule {
         self.severity
     }
 
-    fn pass(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext, owner: Option<&ModInfo>) -> Vec<Diagnostic> {
+    fn pass(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext, owner: Option<&ModInfo>) -> Vec<Found> {
         let Some(owner) = owner else { return Vec::new() };
         let mut visitor = SettingsVisitor { owner, ast_context, diagnostics: Vec::new() };
         visitor.visit_ast(ast);
-        visitor.diagnostics
+        visitor.diagnostics.into_iter().map(Found::from).collect()
     }
 }
 
@@ -140,6 +140,7 @@ mod tests {
             .unwrap()
             .pass(&ast, &context, &AstContext::from_ast(&ast), Some(&owner))
             .into_iter()
+            .map(|f| f.diagnostic)
             .inspect(|d| assert_eq!(d.code, NAME))
             .map(|d| {
                 let (start, end) = d.primary_label.range;

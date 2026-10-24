@@ -64,29 +64,41 @@ pub trait Rule {
         context: &Context,
         ast_context: &AstContext,
         owner: Option<&ModInfo>,
-    ) -> Vec<Diagnostic>;
-    fn fix(&self, _diagnostic: &Diagnostic, _ast_context: &AstContext) -> Option<Vec<Edit>> {
-        None
+    ) -> Vec<Found>;
+}
+
+/// a diagnostic, with the edits that fix it if it can be fixed safely
+pub struct Found {
+    pub diagnostic: Diagnostic,
+    pub fix: Option<Vec<Edit>>,
+}
+
+impl From<Diagnostic> for Found {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Found { diagnostic, fix: None }
     }
 }
 
-type Fixer = fn(&Diagnostic, &AstContext) -> Option<Vec<Edit>>;
+trait Fixable: Lint {
+    fn pass_with_fixes(&self, ast: &full_moon::ast::Ast, context: &Context, ast_context: &AstContext) -> Vec<Found>;
+}
+
+fn diagnostics(found: Vec<Found>) -> Vec<Diagnostic> {
+    found.into_iter().map(|f| f.diagnostic).collect()
+}
+
+fn byte_range(node: &impl Node) -> std::ops::Range<usize> {
+    let start = node.start_position().map_or(0, |p| p.bytes());
+    start..node.end_position().map_or(start, |p| p.bytes())
+}
 
 struct Configured<L> {
     name: &'static str,
     lint: L,
     severity: Severity,
-    fix: Option<Fixer>,
 }
 
-impl<L> Configured<L> {
-    fn with_fix(mut self, fix: Fixer) -> Self {
-        self.fix = Some(fix);
-        self
-    }
-}
-
-impl<L: Lint> Rule for Configured<L> {
+impl<L: Fixable> Rule for Configured<L> {
     fn name(&self) -> &'static str {
         self.name
     }
@@ -95,12 +107,8 @@ impl<L: Lint> Rule for Configured<L> {
         self.severity
     }
 
-    fn pass(&self, ast: &full_moon::ast::Ast, context: &Context, ast_context: &AstContext, _: Option<&ModInfo>) -> Vec<Diagnostic> {
-        self.lint.pass(ast, context, ast_context)
-    }
-
-    fn fix(&self, diagnostic: &Diagnostic, ast_context: &AstContext) -> Option<Vec<Edit>> {
-        self.fix?(diagnostic, ast_context)
+    fn pass(&self, ast: &full_moon::ast::Ast, context: &Context, ast_context: &AstContext, _: Option<&ModInfo>) -> Vec<Found> {
+        self.lint.pass_with_fixes(ast, context, ast_context)
     }
 }
 
@@ -109,7 +117,7 @@ pub fn rules(config: &mut CheckerConfig<toml::Value>) -> Result<Vec<Box<dyn Rule
     let mut rules: Vec<Box<dyn Rule>> = vec![
         Box::new(rule::<legacy_physics_override::LegacyPhysicsOverrideLint>(legacy_physics_override::NAME, config)?),
         Box::new(rule::<deprecated_env::DeprecatedEnvLint>(deprecated_env::NAME, config)?),
-        Box::new(rule::<minetest_global::MinetestGlobalLint>(minetest_global::NAME, config)?.with_fix(minetest_global::fix)),
+        Box::new(rule::<minetest_global::MinetestGlobalLint>(minetest_global::NAME, config)?),
     ];
     rules.push(missing_settingtype::rule(config)?);
     rules.extend(deprecated_function::rules(config)?);
@@ -141,5 +149,5 @@ where
     };
     let lint = L::new(options).map_err(|e| format!("[linter.config] {name}: {e}"))?;
     let severity = config.lints.get(name).map_or(L::SEVERITY, |v| v.to_severity());
-    Ok(Configured { name, lint, severity, fix: None })
+    Ok(Configured { name, lint, severity })
 }

@@ -1,10 +1,14 @@
-//! `luanti_legacy_physics_override`: `set_physics_override(speed, jump, gravity)` instead of a table.
+//! `luanti_legacy_physics_override`: `set_physics_override(speed, jump, gravity)` instead of a table, fixed by
+//! building the table.
 
 use std::convert::Infallible;
 
 use full_moon::ast::{self, Expression, FunctionArgs};
 use full_moon::visitors::Visitor;
 use selene_lib::lints::{AstContext, Context, Diagnostic, Label, Lint, LintType, Severity};
+
+use super::{Fixable, Found};
+use crate::lint::fix::Edit;
 
 pub const NAME: &str = "luanti_legacy_physics_override";
 
@@ -24,15 +28,21 @@ impl Lint for LegacyPhysicsOverrideLint {
         Ok(LegacyPhysicsOverrideLint)
     }
 
-    fn pass(&self, ast: &ast::Ast, _: &Context, _: &AstContext) -> Vec<Diagnostic> {
-        let mut visitor = PhysicsOverrideVisitor { diagnostics: Vec::new() };
+    fn pass(&self, ast: &ast::Ast, context: &Context, ast_context: &AstContext) -> Vec<Diagnostic> {
+        super::diagnostics(self.pass_with_fixes(ast, context, ast_context))
+    }
+}
+
+impl Fixable for LegacyPhysicsOverrideLint {
+    fn pass_with_fixes(&self, ast: &ast::Ast, _: &Context, _: &AstContext) -> Vec<Found> {
+        let mut visitor = PhysicsOverrideVisitor { found: Vec::new() };
         visitor.visit_ast(ast);
-        visitor.diagnostics
+        visitor.found
     }
 }
 
 struct PhysicsOverrideVisitor {
-    diagnostics: Vec<Diagnostic>,
+    found: Vec<Found>,
 }
 
 impl Visitor for PhysicsOverrideVisitor {
@@ -51,7 +61,7 @@ impl Visitor for PhysicsOverrideVisitor {
             return;
         }
 
-        let mut notes = Vec::new();
+        let (mut notes, mut fix) = (Vec::new(), None);
         if args.len() <= FIELDS.len() {
             let fields: Vec<String> = FIELDS
                 .iter()
@@ -60,20 +70,35 @@ impl Visitor for PhysicsOverrideVisitor {
                 .filter(|(_, arg)| !is_nil(arg))
                 .map(|(field, arg)| format!("{field} = {}", arg.to_string().trim()))
                 .collect();
-            notes.push(format!("try: set_physics_override({{ {} }})", fields.join(", ")));
+            let table = format!("{{ {} }}", fields.join(", "));
+            notes.push(format!("try: set_physics_override({table})"));
+            // a call or `...` last could have filled more than one argument
+            if !args.last().is_some_and(|arg| is_multiple_values(arg)) {
+                let range = super::byte_range(call.args());
+                fix = Some(vec![Edit { range, text: format!("({table})") }]);
+            }
         }
-        self.diagnostics.push(Diagnostic::new_complete(
+        let diagnostic = Diagnostic::new_complete(
             NAME,
             "set_physics_override no longer takes positional arguments, pass a table".to_owned(),
             Label::from_node(call.args(), None),
             notes,
             Vec::new(),
-        ));
+        );
+        self.found.push(Found { diagnostic, fix });
     }
 }
 
 fn is_nil(expression: &Expression) -> bool {
     matches!(expression, Expression::Symbol(token) if token.token().to_string() == "nil")
+}
+
+fn is_multiple_values(expression: &Expression) -> bool {
+    match expression {
+        Expression::FunctionCall(_) => true,
+        Expression::Symbol(token) => token.token().to_string() == "...",
+        _ => false,
+    }
 }
 
 #[cfg(test)]
