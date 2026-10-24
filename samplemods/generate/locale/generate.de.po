@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Language: de\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# kept as is, the rest of the strings get added untranslated
+msgid "Widget"
+msgstr "Dings"
