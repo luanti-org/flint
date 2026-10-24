@@ -13,6 +13,12 @@ calls [selene](https://github.com/Kampfkarren/selene)
 
 some lints can be fixed automatically, handled by `flint lint --write`. run `flint lint --write` (or `flint modernize`) to apply the fixes, then report what's left. lints set to `allow`, in the config or by a [filter comment](#filter-comments), aren't fixed.
 
+some deprecated functions are replaced by something added in a newer engine. the mod's `min_minetest_version` decides what happens, which is the highest `min_minetest_version` in the conf of the mod and of any modpack or game it's in:
+
+* at least the version the replacement was added in: the lint is reported and fixable
+* lower: the lint isn't reported, as the mod supports engines without the replacement
+* not set: the mod might support every version, like ContentDB assumes, so the lint is reported with a note to set `min_minetest_version`, but not fixed
+
 ## Luanti lints
 
 flint adds its own lints on top of selene's. they're configured the same way, in `[linter.lints]` and `[linter.config]`.
@@ -24,15 +30,15 @@ flint adds its own lints on top of selene's. they're configured the same way, in
 | `luanti_minetest_global` | warn | the `minetest` global instead of `core`, e.g. `core.log("hi")` instead of `minetest.log("hi")`. fixable, unless the file has a local named `core` |
 | `luanti_missing_settingtype` | warn | a mod reads its own setting, e.g. `core.settings:get("mymod.speed")`, that isn't in `settingtypes.txt`. only settings named `modname.*` or `modname_*` with a literal name are checked, since others may belong to the engine or other mods. the `settingtypes.txt` of the mod and any modpack or game it's in count |
 | `luanti_deprecated_register_on_auth_fail` | warn | `core.register_on_auth_fail`, use `core.register_on_authplayer` and check `is_success` |
-| `luanti_deprecated_setting_get_pos` | warn | `core.setting_get_pos(name)`, use `core.settings:get_pos(name)`. fixable where it's called |
+| `luanti_deprecated_setting_get_pos` | warn | `core.setting_get_pos(name)`, use `core.settings:get_pos(name)`, added in 5.11. fixable where it's called, when the mod's `min_minetest_version` is at least `5.11` |
 | `luanti_legacy_get_value_noise` | warn | `core.get_value_noise(seeddiff, octaves, persistence, spread)`, pass a noiseparams table |
-| `luanti_deprecated_get_perlin` | warn | `core.get_perlin`, renamed to `core.get_value_noise` in 5.12. fixable when `min_minetest_version` in the conf of the mod, or of a modpack or game it's in, is at least `5.12` |
+| `luanti_deprecated_get_perlin` | warn | `core.get_perlin`, renamed to `core.get_value_noise` in 5.12. fixable when the mod's `min_minetest_version` is at least `5.12` |
 | `luanti_deprecated_get_mapgen_params` | warn | `core.get_mapgen_params()`, use `core.get_mapgen_setting(name)` |
 | `luanti_deprecated_set_mapgen_params` | warn | `core.set_mapgen_params(params)`, use `core.set_mapgen_setting(name, value, override)` |
 | `luanti_deprecated_get_node_group` | warn | `core.get_node_group(name, group)`, use `core.get_item_group(name, group)`. fixable |
 | `luanti_deprecated_get_entity_name` | warn | `obj:get_entity_name()`, use `obj:get_luaentity().name` |
-| `luanti_deprecated_get_player_velocity` | warn | `player:get_player_velocity()`, use `player:get_velocity()`. fixable |
-| `luanti_deprecated_add_player_velocity` | warn | `player:add_player_velocity(vel)`, use `player:add_velocity(vel)`. fixable |
+| `luanti_deprecated_get_player_velocity` | warn | `player:get_player_velocity()`, use `player:get_velocity()`, which works on players since 5.4. fixable when the mod's `min_minetest_version` is at least `5.4` |
+| `luanti_deprecated_add_player_velocity` | warn | `player:add_player_velocity(vel)`, use `player:add_velocity(vel)`, which works on players since 5.4. fixable when the mod's `min_minetest_version` is at least `5.4` |
 | `luanti_deprecated_get_look_pitch` | warn | `player:get_look_pitch()`, use `player:get_look_vertical()` |
 | `luanti_deprecated_get_look_yaw` | warn | `player:get_look_yaw()`, use `player:get_look_horizontal()` |
 | `luanti_deprecated_set_look_pitch` | warn | `player:set_look_pitch(radians)`, use `player:set_look_vertical(radians)`. fixable |

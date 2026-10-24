@@ -20,9 +20,6 @@ enum Kind {
 enum Replacement {
     /// the function or method with this name, called the same way
     Rename(&'static str),
-    /// like `Rename`, but the new name was only added in this engine version, so it's only fixed in mods whose
-    /// `min_minetest_version` is at least that
-    RenameSince(&'static str, Version),
     /// `core.<this>(...)` for `core.function(...)`, only where it's called
     Called(&'static str),
 }
@@ -34,6 +31,7 @@ struct Deprecated {
     message: &'static str,
     note: Option<&'static str>,
     replacement: Option<Replacement>,
+    since: Option<Version>,
 }
 
 const DEPRECATED: &[Deprecated] = &[
@@ -44,6 +42,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `core.register_on_authplayer`",
         note: Some("its callback is `function(name, ip, is_success)`, check `is_success`"),
         replacement: None,
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_setting_get_pos",
@@ -52,6 +51,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `core.settings:get_pos(name)`",
         note: None,
         replacement: Some(Replacement::Called("settings:get_pos")),
+        since: Some(Version(5, 11)),
     },
     Deprecated {
         lint: "luanti_legacy_get_value_noise",
@@ -60,6 +60,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "pass a noiseparams table",
         note: Some("try: core.get_value_noise({ seed = seeddiff, octaves = octaves, persistence = persistence, spread = { x = spread, y = spread, z = spread } })"),
         replacement: None,
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_get_perlin",
@@ -67,8 +68,8 @@ const DEPRECATED: &[Deprecated] = &[
         kind: Kind::Function { max_args: None },
         message: "renamed to `core.get_value_noise`",
         note: Some("pass it a noiseparams table, positional arguments are deprecated too"),
-        // added in 5.12.0, when `core.get_perlin` became an alias of it in builtin/game/deprecated.lua
-        replacement: Some(Replacement::RenameSince("get_value_noise", Version(5, 12))),
+        replacement: Some(Replacement::Rename("get_value_noise")),
+        since: Some(Version(5, 12)),
     },
     Deprecated {
         lint: "luanti_deprecated_get_mapgen_params",
@@ -77,6 +78,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `core.get_mapgen_setting(name)`",
         note: None,
         replacement: None,
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_set_mapgen_params",
@@ -85,6 +87,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `core.set_mapgen_setting(name, value, override)`",
         note: None,
         replacement: None,
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_get_node_group",
@@ -93,6 +96,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `core.get_item_group(name, group)`",
         note: None,
         replacement: Some(Replacement::Rename("get_item_group")),
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_get_entity_name",
@@ -101,6 +105,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `obj:get_luaentity().name`",
         note: None,
         replacement: None,
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_get_player_velocity",
@@ -109,6 +114,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `player:get_velocity()`",
         note: None,
         replacement: Some(Replacement::Rename("get_velocity")),
+        since: Some(Version(5, 4)),
     },
     Deprecated {
         lint: "luanti_deprecated_add_player_velocity",
@@ -117,6 +123,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `player:add_velocity(vel)`",
         note: None,
         replacement: Some(Replacement::Rename("add_velocity")),
+        since: Some(Version(5, 4)),
     },
     Deprecated {
         lint: "luanti_deprecated_get_look_pitch",
@@ -125,6 +132,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `player:get_look_vertical()`",
         note: Some("`get_look_pitch` is inverted: it's positive looking up, `get_look_vertical` is positive looking down"),
         replacement: None,
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_get_look_yaw",
@@ -133,6 +141,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `player:get_look_horizontal()`",
         note: Some("`get_look_yaw` is offset by pi/2 from `get_look_horizontal`"),
         replacement: None,
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_set_look_pitch",
@@ -141,6 +150,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `player:set_look_vertical(radians)`",
         note: None,
         replacement: Some(Replacement::Rename("set_look_vertical")),
+        since: None,
     },
     Deprecated {
         lint: "luanti_deprecated_set_look_yaw",
@@ -149,6 +159,7 @@ const DEPRECATED: &[Deprecated] = &[
         message: "use `player:set_look_horizontal(radians)`",
         note: None,
         replacement: Some(Replacement::Rename("set_look_horizontal")),
+        since: None,
     },
 ];
 
@@ -182,6 +193,11 @@ impl Rule for DeprecatedRule {
 
     fn pass(&self, ast: &ast::Ast, _: &Context, ast_context: &AstContext, owner: Option<&ModInfo>) -> Vec<Found> {
         let min_version = owner.and_then(|owner| owner.min_version);
+        if let (Some(since), Some(min_version)) = (self.deprecated.since, min_version)
+            && min_version < since
+        {
+            return Vec::new();
+        }
         let mut visitor = DeprecatedVisitor { deprecated: self.deprecated, ast_context, min_version, found: Vec::new() };
         visitor.visit_ast(ast);
         visitor.found
@@ -201,6 +217,10 @@ impl DeprecatedVisitor<'_> {
             Kind::Function { max_args } => self.check_function(prefix, suffixes, max_args),
             Kind::Method => self.check_methods(suffixes),
         }
+    }
+
+    fn can_replace(&self) -> bool {
+        self.deprecated.since.is_none_or(|since| self.min_version >= Some(since))
     }
 
     /// `core.name`, called or not
@@ -225,11 +245,8 @@ impl DeprecatedVisitor<'_> {
             Some(_) => format!("`{namespace}.{}` with positional arguments is deprecated, {}", deprecated.function, deprecated.message),
             None => format!("`{namespace}.{}` is deprecated, {}", deprecated.function, deprecated.message),
         };
-        let fix = match deprecated.replacement {
-            Some(Replacement::Rename(to)) => Some(Edit { range: super::byte_range(name), text: to.to_owned() }),
-            Some(Replacement::RenameSince(to, since)) if self.min_version >= Some(since) => {
-                Some(Edit { range: super::byte_range(name), text: to.to_owned() })
-            }
+        let fix = match deprecated.replacement.as_ref().filter(|_| self.can_replace()) {
+            Some(Replacement::Rename(to)) => Some(Edit { range: super::byte_range(name), text: (*to).to_owned() }),
             Some(Replacement::Called(to)) if matches!(rest.first(), Some(Suffix::Call(Call::AnonymousCall(_)))) => {
                 Some(Edit { range: super::byte_range(suffixes[0]), text: format!(".{to}") })
             }
@@ -244,8 +261,10 @@ impl DeprecatedVisitor<'_> {
             let Suffix::Call(Call::MethodCall(call)) = suffix else { continue };
             if call.name().token().to_string() == self.deprecated.function {
                 let message = format!("`{}` is deprecated, {}", self.deprecated.function, self.deprecated.message);
-                let fix = match self.deprecated.replacement {
-                    Some(Replacement::Rename(to)) => Some(Edit { range: super::byte_range(call.name()), text: to.to_owned() }),
+                let fix = match self.deprecated.replacement.as_ref().filter(|_| self.can_replace()) {
+                    Some(Replacement::Rename(to)) => {
+                        Some(Edit { range: super::byte_range(call.name()), text: (*to).to_owned() })
+                    }
                     _ => None,
                 };
                 self.push(message, Label::from_node(call.name(), None), fix);
@@ -254,13 +273,14 @@ impl DeprecatedVisitor<'_> {
     }
 
     fn push(&mut self, message: String, label: Label, fix: Option<Edit>) {
-        let diagnostic = Diagnostic::new_complete(
-            self.deprecated.lint,
-            message,
-            label,
-            self.deprecated.note.map(str::to_owned).into_iter().collect(),
-            Vec::new(),
-        );
+        let mut notes: Vec<String> = self.deprecated.note.map(str::to_owned).into_iter().collect();
+        // with no `min_version` the mod might support older engines, say how to show it doesn't
+        if let (Some(since), None) = (self.deprecated.since, self.min_version) {
+            notes.push(format!(
+                "the replacement needs {since} or later, set `min_minetest_version = {since}` in the mod's conf to fix this with `flint lint --write`"
+            ));
+        }
+        let diagnostic = Diagnostic::new_complete(self.deprecated.lint, message, label, notes, Vec::new());
         self.found.push(Found { diagnostic, fix: fix.map(|edit| vec![edit]) });
     }
 }

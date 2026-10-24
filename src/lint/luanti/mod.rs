@@ -42,6 +42,12 @@ impl Version {
     }
 }
 
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}.{}", self.0, self.1)
+    }
+}
+
 impl ModInfo {
     /// the mod containing `file`, if it's in one
     pub fn find(file: &Path) -> Option<ModInfo> {

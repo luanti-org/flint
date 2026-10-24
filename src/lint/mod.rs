@@ -589,7 +589,7 @@ print(1)
 
     #[test]
     fn deprecated_functions_are_fixed() {
-        let dir = dir_with("fix-deprecated", &[]);
+        let dir = dir_with("fix-deprecated", &[("mod.conf", "name = a\nmin_minetest_version = 5.11\n"), ("init.lua", "")]);
         let fix = |code: &str| fixed(&dir, code).0;
         assert_eq!(fix("p:add_player_velocity(p:get_player_velocity())"), "p:add_velocity(p:get_velocity())");
         assert_eq!(fix("p:set_look_pitch(1)\np:set_look_yaw(2)"), "p:set_look_vertical(1)\np:set_look_horizontal(2)");
@@ -599,6 +599,43 @@ print(1)
         for code in ["print(p:get_look_pitch(), p:get_look_yaw(), o:get_entity_name())", "print(core.get_perlin(np))"] {
             assert_eq!(fix(code), code);
         }
+    }
+
+    #[test]
+    fn replacements_newer_than_the_mod_are_not_fixed() {
+        let velocity = "p:add_player_velocity(p:get_player_velocity())";
+        let setting = "print(core.setting_get_pos(\"a\"))";
+        let fix = |name: &str, conf: &str, code: &str| {
+            let dir = dir_with(name, &[("mod.conf", conf), ("init.lua", "")]);
+            fixed(&dir, code).0
+        };
+        assert_eq!(fix("version-none", "name = a\n", velocity), velocity);
+        assert_eq!(fix("version-5.3", "name = a\nmin_minetest_version = 5.3\n", velocity), velocity);
+        assert_eq!(fix("version-5.4", "name = a\nmin_minetest_version = 5.4\n", velocity), "p:add_velocity(p:get_velocity())");
+        assert_eq!(fix("version-5.10", "name = a\nmin_minetest_version = 5.10\n", setting), setting);
+        assert_eq!(fix("version-old", "name = a\n", "p:set_look_pitch(1)"), "p:set_look_vertical(1)");
+    }
+
+    #[test]
+    fn replacements_newer_than_the_mod_are_not_reported() {
+        let code = "p:add_player_velocity(v)";
+        let notes = |name: &str, conf: &str| {
+            let dir = dir_with(name, &[("mod.conf", conf), ("init.lua", code)]);
+            let flint = config::load(&dir).unwrap();
+            let owner = luanti::ModInfo::find(&dir.join("init.lua"));
+            checker(&dir, flint.selene().unwrap(), &flint.globals().unwrap())
+                .unwrap()
+                .test_on(code, &parse(code).unwrap(), owner.as_ref())
+                .into_iter()
+                .filter(|f| f.diagnostic.code == "luanti_deprecated_add_player_velocity")
+                .map(|f| f.diagnostic.notes)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(notes("report-5.3", "name = a\nmin_minetest_version = 5.3\n"), Vec::<Vec<String>>::new());
+        assert_eq!(notes("report-5.4", "name = a\nmin_minetest_version = 5.4\n"), [Vec::<String>::new()]);
+        let unknown = notes("report-none", "name = a\n");
+        assert_eq!(unknown.len(), 1);
+        assert!(unknown[0][0].contains("set `min_minetest_version = 5.4`"), "{unknown:?}");
     }
 
     #[test]
