@@ -153,7 +153,7 @@ fn move_into_conf(
 }
 
 /// An empty path means the current dir, which has to be resolved to get its name.
-fn folder_name(dir: &Path) -> Result<String, String> {
+pub(crate) fn folder_name(dir: &Path) -> Result<String, String> {
     let dir = if dir.as_os_str().is_empty() { Path::new(".") } else { dir };
     let abs = std::fs::canonicalize(dir).map_err(|e| format!("cannot resolve {}: {e}", dir.display()))?;
     abs.file_name()

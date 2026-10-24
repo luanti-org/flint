@@ -11,9 +11,22 @@ fn normalize(text: &str) -> String {
     text.trim_start_matches('\u{feff}').replace("\r\n", "\n")
 }
 
+pub fn edit_normalized(text: &str, edit: impl FnOnce(String) -> String) -> String {
+    let edited = edit(normalize(text));
+    let edited = if text.contains("\r\n") { edited.replace('\n', "\r\n") } else { edited };
+    if text.starts_with('\u{feff}') { format!("\u{feff}{edited}") } else { edited }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::normalize;
+    use super::{edit_normalized, normalize};
+
+    #[test]
+    fn edits_keep_bom_and_crlf() {
+        let add = |text: String| text + "c\n";
+        assert_eq!(edit_normalized("\u{feff}a\r\nb\r\n", add), "\u{feff}a\r\nb\r\nc\r\n");
+        assert_eq!(edit_normalized("a\nb\n", add), "a\nb\nc\n");
+    }
 
     #[test]
     fn strips_bom() {

@@ -17,8 +17,8 @@ use crate::parsers::{depends_txt, mod_conf};
 
 mod filter;
 pub(crate) mod fix;
-mod luanti;
-mod package;
+pub(crate) mod luanti;
+pub(crate) mod package;
 
 /// with `--write`, fixes are applied and the file linted again until nothing changes, at most this many times
 const MAX_FIX_PASSES: usize = 10;
@@ -26,7 +26,7 @@ const MAX_FIX_PASSES: usize = 10;
 const FIXABLE_NOTE: &str = "fixable with `flint lint --write`";
 
 /// globals provided by Luanti and LuaJIT on top of Lua 5.1
-const LUANTI_GLOBALS: &[&str] = &[
+pub(crate) const LUANTI_GLOBALS: &[&str] = &[
     "core",
     "minetest",
     "vector",

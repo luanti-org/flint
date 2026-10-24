@@ -43,9 +43,58 @@ pub fn format_entry(key: &str, value: &str) -> String {
     }
 }
 
+pub fn set_entry(text: &str, key: &str, value: &str) -> String {
+    super::edit_normalized(text, |text| set_normalized_entry(&text, key, value))
+}
+
+fn set_normalized_entry(text: &str, key: &str, value: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut found = None;
+    let mut i = 0;
+    while i < lines.len() {
+        let start = i;
+        let line = lines[i].trim();
+        i += 1;
+        let Some((k, v)) = line.split_once('=').filter(|_| !line.starts_with('#')) else { continue };
+        if v.trim() == "\"\"\"" {
+            while i < lines.len() && lines[i].trim() != "\"\"\"" {
+                i += 1;
+            }
+            i = (i + 1).min(lines.len());
+        }
+        if k.trim() == key {
+            found = Some(start..i);
+        }
+    }
+
+    let entry = format_entry(key, value);
+    let mut out = String::new();
+    match found {
+        Some(range) => {
+            for line in &lines[..range.start] {
+                out.push_str(line);
+                out.push('\n');
+            }
+            out.push_str(&entry);
+            for line in &lines[range.end..] {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        None => {
+            out.push_str(text);
+            if !out.is_empty() && !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&entry);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Settings, format_entry};
+    use super::{Settings, format_entry, set_entry};
 
     #[test]
     fn key_value() {
@@ -109,6 +158,29 @@ mod tests {
     #[test]
     fn format_multiline() {
         assert_eq!(format_entry("foo", "a\nb"), "foo = \"\"\"\na\nb\n\"\"\"\n");
+    }
+
+    #[test]
+    fn set_replaces_in_place() {
+        let text = "# comment\nname = a\ntitle = A\n";
+        assert_eq!(set_entry(text, "title", "B"), "# comment\nname = a\ntitle = B\n");
+        assert_eq!(set_entry("a = 1\na = 2\nb = 3", "a", "4"), "a = 1\na = 4\nb = 3\n");
+    }
+
+    #[test]
+    fn set_appends_missing() {
+        assert_eq!(set_entry("name = a", "title", "A"), "name = a\ntitle = A\n");
+        assert_eq!(set_entry("", "name", "a"), "name = a\n");
+        assert_eq!(set_entry("# title = no\n", "title", "A"), "# title = no\ntitle = A\n");
+        assert_eq!(set_entry("\u{feff}name = a\r\n", "title", "A"), "\u{feff}name = a\r\ntitle = A\r\n");
+    }
+
+    #[test]
+    fn set_replaces_multiline() {
+        let text = "description = \"\"\"\none\ntwo\n\"\"\"\nname = a\n";
+        assert_eq!(set_entry(text, "description", "short"), "description = short\nname = a\n");
+        assert_eq!(set_entry("name = a\n", "description", "x\ny"), "name = a\ndescription = \"\"\"\nx\ny\n\"\"\"\n");
+        assert_eq!(set_entry("d = \"\"\"\nname = no\n\"\"\"\n", "name", "a"), "d = \"\"\"\nname = no\n\"\"\"\nname = a\n");
     }
 
     #[test]

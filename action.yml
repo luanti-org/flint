@@ -12,7 +12,7 @@ inputs:
     description: directory to run on, relative to the repository root
     default: .
   check:
-    description: pass --check to format and compress, so they fail instead of writing changes
+    description: pass --check to format, compress, and generate, so they fail instead of writing changes
     default: "true"
 
 runs:
@@ -51,7 +51,7 @@ runs:
         FLINT_CHECK: ${{ inputs.check }}
       run: |
         args=("$FLINT_COMMAND" --path "$FLINT_PATH")
-        if [[ "$FLINT_CHECK" == "true" && ( "$FLINT_COMMAND" == "format" || "$FLINT_COMMAND" == "compress" ) ]]; then
+        if [[ "$FLINT_CHECK" == "true" && ( "$FLINT_COMMAND" == "format" || "$FLINT_COMMAND" == "compress" || "$FLINT_COMMAND" == "generate" ) ]]; then
           args+=(--check)
         fi
         "$RUNNER_TEMP/flint/bin/flint" "${args[@]}"

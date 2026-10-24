@@ -5,7 +5,7 @@ const NOT_ONE: &str = "nplurals=2; plural=(n != 1);";
 const ABOVE_ONE: &str = "nplurals=2; plural=(n > 1);";
 const EAST_SLAVIC: &str = "nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);";
 
-pub(super) fn for_language(lang: &str) -> &'static str {
+pub(crate) fn for_language(lang: &str) -> &'static str {
     lookup(lang)
         .or_else(|| lookup(lang.split(['_', '-']).next()?))
         .unwrap_or(NOT_ONE)

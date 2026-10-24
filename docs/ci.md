@@ -29,7 +29,7 @@ jobs:
 |---|---|---|
 | `command` | `lint` | flint command to run |
 | `path` | `.` | directory to run on, relative to the repository root |
-| `check` | `true` | pass `--check` to `format` and `compress`, so they fail instead of writing changes |
+| `check` | `true` | pass `--check` to `format`, `compress` and `generate`, so they fail instead of writing changes |
 
 flint is built from source the first time and cached afterwards, so the first run takes a few minutes.
 

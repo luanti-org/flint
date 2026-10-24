@@ -1,8 +1,8 @@
 //! lints on a package's files rather than its Lua, e.g. a legacy `depends.txt`, fixed by moving them to their
 //! modern equivalents.
 
-mod legacy_txt;
-mod plural_forms;
+pub(crate) mod legacy_txt;
+pub(crate) mod plural_forms;
 mod translations;
 
 use std::fs;
@@ -121,7 +121,7 @@ fn collect_children(found: &mut Vec<(PathBuf, ContentType)>, dir: &Path) -> Resu
 }
 
 /// Sorted entries of `dir`, or nothing if it doesn't exist. An empty path means the current dir.
-fn list_dir(dir: &Path) -> Result<Vec<PathBuf>, String> {
+pub(crate) fn list_dir(dir: &Path) -> Result<Vec<PathBuf>, String> {
     let read_path = if dir.as_os_str().is_empty() { Path::new(".") } else { dir };
     let entries = match fs::read_dir(read_path) {
         Ok(entries) => entries,
@@ -137,7 +137,7 @@ fn list_dir(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
-fn read_optional(path: impl AsRef<Path>) -> Result<Option<String>, String> {
+pub(crate) fn read_optional(path: impl AsRef<Path>) -> Result<Option<String>, String> {
     let path = path.as_ref();
     match fs::read_to_string(path) {
         Ok(s) => Ok(Some(s)),

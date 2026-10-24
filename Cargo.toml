@@ -15,6 +15,7 @@ oxipng = { version = "10.2", default-features = false, features = ["parallel"] }
 polib = "0.3"
 selene-lib = { git = "https://github.com/Kampfkarren/selene", tag = "0.32.0", default-features = false, features = ["luajit"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
 stylua = { version = "2.6", default-features = false, features = ["luajit"] }
 toml = "0.7"
 

@@ -18,7 +18,7 @@ mod deprecated_env;
 mod deprecated_function;
 mod legacy_physics_override;
 mod minetest_global;
-mod missing_settingtype;
+pub(crate) mod missing_settingtype;
 
 /// the mod a linted file belongs to
 #[derive(Debug, Default)]
@@ -149,17 +149,21 @@ pub fn rules(config: &mut CheckerConfig<toml::Value>) -> Result<Vec<Box<dyn Rule
 }
 
 /// `core` or `minetest`, if `name` is one of them and the global rather than a local
-fn luanti_namespace(name: &full_moon::tokenizer::TokenReference, ast_context: &AstContext) -> Option<String> {
+pub(crate) fn luanti_namespace(name: &full_moon::tokenizer::TokenReference, ast_context: &AstContext) -> Option<String> {
     let namespace = name.token().to_string();
     if namespace != "core" && namespace != "minetest" {
         return None;
     }
+    is_global(name, ast_context).then_some(namespace)
+}
+
+/// whether the variable `name` is a global rather than a local
+pub(crate) fn is_global(name: &full_moon::tokenizer::TokenReference, ast_context: &AstContext) -> bool {
     let start = name.start_position().map_or(0, |p| p.bytes());
-    let global = ast_context
+    ast_context
         .scope_manager
         .reference_at_byte(start)
-        .is_none_or(|reference| reference.resolved.is_none());
-    global.then_some(namespace)
+        .is_none_or(|reference| reference.resolved.is_none())
 }
 
 fn rule<L>(name: &'static str, config: &mut CheckerConfig<toml::Value>) -> Result<Configured<L>, String>

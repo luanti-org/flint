@@ -7,6 +7,7 @@ mod compress;
 mod config;
 mod content_type;
 mod format;
+mod generate;
 mod lint;
 mod panic_guard;
 mod parsers;
@@ -49,6 +50,14 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
+    /// Create or update the package's files from its code, e.g. `min_minetest_version` and translation templates
+    Generate {
+        /// Files to generate, all that apply to the package and the mods and modpacks in it by default
+        files: Vec<generate::Target>,
+        /// Don't write changes, fail if any file is out of date
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 fn main() {
@@ -80,6 +89,7 @@ fn main() {
         Commands::Lint { write } => lint::run(&config, write),
         Commands::Modernize => lint::run(&config, true),
         Commands::Compress { check } => compress::run(&config, check),
+        Commands::Generate { files, check } => generate::run(&config, &files, check),
     };
 
     if let Err(e) = result {
