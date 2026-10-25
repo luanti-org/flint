@@ -6,6 +6,7 @@ mod annotate;
 mod compress;
 mod config;
 mod content_type;
+mod convert;
 mod format;
 mod generate;
 mod lint;
@@ -58,6 +59,16 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
+    /// Convert a file to another format: `.b3d` models to glTF (`.gltf`/`.glb`), `.obj` models to node boxes (`.lua`), and `.tr` translations to `.po`
+    Convert {
+        /// File to convert
+        input: PathBuf,
+        /// File to write, its extension picks the format
+        output: PathBuf,
+        /// Multiply the node box's coordinates by this, for `.obj` models
+        #[arg(long)]
+        scale: Option<f64>,
+    },
 }
 
 fn main() {
@@ -90,6 +101,7 @@ fn main() {
         Commands::Modernize => lint::run(&config, true),
         Commands::Compress { check } => compress::run(&config, check),
         Commands::Generate { files, check } => generate::run(&config, &files, check),
+        Commands::Convert { input, output, scale } => convert::run(&config, &input, &output, scale),
     };
 
     if let Err(e) = result {

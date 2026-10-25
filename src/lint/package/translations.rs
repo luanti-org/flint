@@ -29,13 +29,26 @@ pub(super) fn check(dir: &Path, _: ContentType) -> Result<Vec<Problem>, String> 
     Ok(problems)
 }
 
-fn convert(tr_path: &Path) -> Result<Result<Fix, String>, String> {
+pub(crate) fn tr_to_po(tr_path: &Path, text: &str) -> Result<String, String> {
+    let (domain, lang) = domain_and_lang(tr_path)?;
+    tr::parse(text).and_then(|tr| build_catalog(&tr, domain, lang)).and_then(|catalog| render(&catalog))
+}
+
+fn domain_and_lang(tr_path: &Path) -> Result<(&str, &str), String> {
     let name = tr_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let stem = name.strip_suffix(".tr").unwrap_or(name);
-    let (Some(domain), Some((_, lang))) = (stem.split('.').next(), stem.rsplit_once('.')) else {
-        return Ok(Err("name must be <textdomain>.<lang>.tr".to_string()));
+    match (stem.split('.').next(), stem.rsplit_once('.')) {
+        (Some(domain), Some((_, lang))) => Ok((domain, lang)),
+        _ => Err("name must be <textdomain>.<lang>.tr".to_string()),
+    }
+}
+
+fn convert(tr_path: &Path) -> Result<Result<Fix, String>, String> {
+    let (domain, lang) = match domain_and_lang(tr_path) {
+        Ok(found) => found,
+        Err(e) => return Ok(Err(e)),
     };
-    let po_path = tr_path.with_file_name(format!("{stem}.po"));
+    let po_path = tr_path.with_extension("po");
 
     let text = read_optional(tr_path)?.unwrap_or_default();
     let catalog = match tr::parse(&text).and_then(|tr| build_catalog(&tr, domain, lang)) {

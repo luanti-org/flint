@@ -1,5 +1,6 @@
 //! parsers for luanti stuff
 
+pub mod b3d;
 pub mod depends_txt;
 pub mod description_txt;
 pub mod mod_conf;

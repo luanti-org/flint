@@ -35,13 +35,7 @@ pub fn run(flint: &crate::config::Config, check: bool) -> Result<(), String> {
 /// format `path` in place, or with `check` only report it, returning whether it needed formatting
 fn format_file(path: &Path, config: Config, check: bool) -> Result<bool, String> {
     let code = fs::read_to_string(path).map_err(|e| format!("cannot read: {e}"))?;
-    // StyLua's optional output verification panics on some valid LuaJIT
-    // (e.g. `12i`), so like its CLI leave it off, and guard against other panics.
-    let formatted = crate::panic_guard::catch(|| {
-        stylua_lib::format_code(&code, config, None, OutputVerification::None)
-    })
-    .map_err(|e| format!("StyLua crashed: {e}"))?
-    .map_err(|e| e.to_string())?;
+    let formatted = format_code(&code, config)?;
     if formatted == code {
         return Ok(false);
     }
@@ -55,6 +49,14 @@ fn format_file(path: &Path, config: Config, check: bool) -> Result<bool, String>
         println!("formatted {}", path.display());
     }
     Ok(true)
+}
+
+pub fn format_code(code: &str, config: Config) -> Result<String, String> {
+    // StyLua's optional output verification panics on some valid LuaJIT
+    // (e.g. `12i`), so like its CLI leave it off, and guard against other panics.
+    crate::panic_guard::catch(|| stylua_lib::format_code(code, config, None, OutputVerification::None))
+        .map_err(|e| format!("StyLua crashed: {e}"))?
+        .map_err(|e| e.to_string())
 }
 
 /// 1 based line of the first difference between `a` and `b`

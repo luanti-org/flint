@@ -3,7 +3,7 @@
 
 pub(crate) mod legacy_txt;
 pub(crate) mod plural_forms;
-mod translations;
+pub(crate) mod translations;
 
 use std::fs;
 use std::io::ErrorKind;
