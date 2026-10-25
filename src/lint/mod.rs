@@ -9,7 +9,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity as 
 use codespan_reporting::term::{self, termcolor::ColorChoice, termcolor::StandardStream};
 use full_moon::LuaVersion;
 use selene_lib::lints::{self, AstContext, Context, Severity};
-use selene_lib::standard_library::{Field, FieldKind, StandardLibrary};
+use selene_lib::standard_library::{Field, FieldKind, Required, StandardLibrary};
 use selene_lib::{lint_exists, Checker, CheckerConfig};
 
 use crate::annotate::{self, Level, Span};
@@ -295,6 +295,14 @@ fn checker(dir: &Path, mut config: CheckerConfig<toml::Value>, globals: &[String
     if let Some(Field { field_kind: FieldKind::Function(getn), .. }) = std.globals.get_mut("table.getn") {
         getn.arguments.truncate(1);
     }
+    // selene requires a message for `assert` and `error`, lua 5.1 makes it optional
+    for (name, index) in [("assert", 1), ("error", 0)] {
+        if let Some(Field { field_kind: FieldKind::Function(function), .. }) = std.globals.get_mut(name)
+            && let Some(argument) = function.arguments.get_mut(index)
+        {
+            argument.required = Required::NotRequired;
+        }
+    }
     let mods = mod_globals(dir)?;
     let extra = mods.iter().chain(globals).map(String::as_str);
     for name in LUANTI_GLOBALS.iter().copied().chain(extra) {
@@ -413,6 +421,12 @@ mod tests {
     fn deprecated_std_is_a_warning() {
         let dir = dir_with("deprecated", &[]);
         assert_eq!(lint(&dir, "print(table.getn({}))"), [("deprecated", Severity::Warning)]);
+    }
+
+    #[test]
+    fn assert_and_error_messages_are_optional() {
+        let dir = dir_with("optional-message", &[]);
+        assert_eq!(lint(&dir, "assert(true)\nif false then\n\terror()\nend"), []);
     }
 
     #[test]
