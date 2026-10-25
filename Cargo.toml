@@ -9,6 +9,7 @@ codespan = "0.11"
 codespan-reporting = "0.11"
 full_moon = { version = "3.0", features = ["luajit"] }
 globset = "0.4"
+gltf-json = { version = "1.4.1", features = ["names"] }
 ignore = "0.4"
 optivorbis = "0.3"
 oxipng = { version = "10.2", default-features = false, features = ["parallel"] }

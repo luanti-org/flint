@@ -5,17 +5,19 @@ use std::path::Path;
 
 use crate::config::Config;
 use crate::lint::package::translations;
-use crate::parsers::b3d;
 
+pub(crate) mod b3d;
+pub(crate) mod build;
 pub(crate) mod gltf;
 mod nodebox;
+mod x;
 
-const SUPPORTED: &str = "`.b3d` to `.gltf` or `.glb`, `.obj` to a node box `.lua`, and `.tr` to `.po`";
+const SUPPORTED: &str = "`.b3d` and `.x` to `.gltf` or `.glb`, `.obj` to a node box `.lua`, and `.tr` to `.po`";
 
 pub fn run(config: &Config, input: &Path, output: &Path, scale: Option<f64>) -> Result<(), String> {
     let extension = |path: &Path| path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
     let (from, to) = (extension(input), extension(output));
-    if !matches!((from.as_str(), to.as_str()), ("b3d", "gltf" | "glb") | ("obj", "lua") | ("tr", "po")) {
+    if !matches!((from.as_str(), to.as_str()), ("b3d" | "x", "gltf" | "glb") | ("obj", "lua") | ("tr", "po")) {
         return Err(format!("cannot convert `.{from}` to `.{to}`, only {SUPPORTED}"));
     }
     if scale.is_some() && from != "obj" {
@@ -25,7 +27,7 @@ pub fn run(config: &Config, input: &Path, output: &Path, scale: Option<f64>) -> 
     let text = || String::from_utf8(data.clone()).map_err(|_| "not UTF-8".to_string());
 
     let converted = match (from.as_str(), to.as_str()) {
-        ("b3d", "gltf" | "glb") => b3d::parse(&data).and_then(|b3d| gltf::convert(&b3d)).map(|(gltf, warnings)| {
+        ("b3d" | "x", "gltf" | "glb") => to_gltf(&from, &data).map(|(gltf, warnings)| {
             (if to == "glb" { gltf.to_glb() } else { gltf.to_gltf() }, warnings)
         }),
         ("obj", "lua") => text()
@@ -44,4 +46,18 @@ pub fn run(config: &Config, input: &Path, output: &Path, scale: Option<f64>) -> 
     fs::write(output, bytes).map_err(|e| format!("cannot write {}: {e}", output.display()))?;
     println!("converted {} to {}", input.display(), output.display());
     Ok(())
+}
+
+pub(crate) fn to_gltf(extension: &str, data: &[u8]) -> Result<(gltf::Gltf, Vec<build::Warning>), String> {
+    let (model, mut warnings) = read(extension, data)?;
+    let (gltf, more) = model.finish()?;
+    warnings.extend(more);
+    Ok((gltf, warnings))
+}
+
+pub(crate) fn read(extension: &str, data: &[u8]) -> Result<(build::Builder, Vec<build::Warning>), String> {
+    match extension {
+        "x" => x::read(data),
+        _ => Ok((b3d::read(data)?, Vec::new())),
+    }
 }

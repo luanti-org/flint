@@ -83,7 +83,8 @@ const RULES: &[(&str, Check)] = &[
     (legacy_txt::LEGACY_DESCRIPTION_TXT, legacy_txt::description_txt),
     (legacy_txt::LEGACY_DEPENDS_TXT, legacy_txt::depends_txt),
     (translations::NAME, translations::check),
-    (models::NAME, models::check),
+    (models::B3D_NAME, models::check_b3d),
+    (models::X_NAME, models::check_x),
 ];
 
 /// build every package lint, rejecting options for them in `config`

@@ -1,17 +1,18 @@
 //! `.b3d`: Blitz3D models, ported from [modlib](https://github.com/appgurueu/modlib/blob/master/b3d.lua)
 //!
 //! see https://github.com/blitz-research/blitz3d/blob/master/blitz3d/loader_b3d.cpp, and Luanti's `CB3DMeshFileLoader.cpp`
-//! for how Luanti reads them. ids are 0-based, rotations are `[x, y, z, w]`.
+//! for how Luanti reads them. rotations are `[x, y, z, w]`.
 
 pub struct B3d {
     pub textures: Vec<Texture>,
     pub brushes: Vec<Brush>,
-    pub node: Option<Node>,
+    pub nodes: Vec<Node>,
 }
 
 /// only what Luanti uses
 pub struct Texture {
     pub file: String,
+    pub flags: i32,
     pub scale: [f32; 2],
 }
 
@@ -28,11 +29,16 @@ pub struct Node {
     pub position: [f32; 3],
     pub scale: [f32; 3],
     pub rotation: [f32; 4],
-    pub mesh: Option<Mesh>,
-    /// vertex id in the mesh this is a bone of, and its weight
-    pub bone: Option<Vec<(usize, f32)>>,
-    pub keys: Vec<Key>,
-    pub children: Vec<Node>,
+    /// in the order of the file, which Luanti reads them in
+    pub contents: Vec<Content>,
+}
+
+pub enum Content {
+    Mesh(Mesh),
+    /// vertex ids, from the start of the latest mesh, and their weights
+    Bone(Vec<(usize, f32)>),
+    Keys(Vec<Key>),
+    Node(Node),
 }
 
 pub struct Mesh {
@@ -41,6 +47,7 @@ pub struct Mesh {
     pub triangle_sets: Vec<Tris>,
 }
 
+#[derive(Default)]
 pub struct Vertices {
     pub tex_coord_sets: usize,
     pub tex_coord_set_size: usize,
@@ -59,8 +66,6 @@ pub struct Vertex {
 
 pub struct Tris {
     pub brush_id: Option<usize>,
-    /// position among all triangle sets in the file, Luanti makes a mesh buffer of each in this order
-    pub buffer: usize,
     pub triangles: Vec<[usize; 3]>,
 }
 
@@ -71,18 +76,8 @@ pub struct Key {
     pub rotation: Option<[f32; 4]>,
 }
 
-impl B3d {
-    /// whether any node has keyframes or a bone weighting vertices
-    pub fn is_animated(&self) -> bool {
-        fn animated(node: &Node) -> bool {
-            !node.keys.is_empty() || node.bone.as_ref().is_some_and(|w| !w.is_empty()) || node.children.iter().any(animated)
-        }
-        self.node.as_ref().is_some_and(animated)
-    }
-}
-
 pub fn parse(data: &[u8]) -> Result<B3d, String> {
-    let mut reader = Reader { data, pos: 0, buffers: 0 };
+    let mut reader = Reader { data, pos: 0 };
     let (tag, mut chunk) = reader.chunk()?;
     if &tag != b"BB3D" {
         return Err("not a b3d file".to_string());
@@ -91,19 +86,20 @@ pub fn parse(data: &[u8]) -> Result<B3d, String> {
     if version / 100 > 2 {
         return Err(format!("unsupported version {}", version / 100));
     }
-    let mut b3d = B3d { textures: Vec::new(), brushes: Vec::new(), node: None };
+    let mut b3d = B3d { textures: Vec::new(), brushes: Vec::new(), nodes: Vec::new() };
     while !chunk.is_empty() {
         let (tag, mut sub) = chunk.chunk()?;
         match &tag {
             b"TEXS" => {
                 while !sub.is_empty() {
                     let file = sub.string()?;
-                    // flags, blend, position
-                    sub.bytes::<16>()?;
+                    let flags = sub.int()?;
+                    // blend, position
+                    sub.bytes::<12>()?;
                     let scale = sub.floats()?;
                     // rotation
                     sub.float()?;
-                    b3d.textures.push(Texture { file, scale });
+                    b3d.textures.push(Texture { file, flags, scale });
                 }
             }
             b"BRUS" => {
@@ -119,10 +115,9 @@ pub fn parse(data: &[u8]) -> Result<B3d, String> {
                     b3d.brushes.push(Brush { name, color, shininess, texture_ids });
                 }
             }
-            b"NODE" => b3d.node = Some(sub.node()?),
+            b"NODE" => b3d.nodes.push(sub.node()?),
             _ => {}
         }
-        chunk.buffers = sub.buffers;
     }
     Ok(b3d)
 }
@@ -130,8 +125,6 @@ pub fn parse(data: &[u8]) -> Result<B3d, String> {
 struct Reader<'a> {
     data: &'a [u8],
     pos: usize,
-    /// triangle sets read so far
-    buffers: usize,
 }
 
 impl<'a> Reader<'a> {
@@ -187,7 +180,7 @@ impl<'a> Reader<'a> {
         let Some(end) = end else {
             return Err(format!("{} chunk is longer than the file", String::from_utf8_lossy(&tag)));
         };
-        let chunk = Reader { data: &self.data[..end], pos: self.pos, buffers: self.buffers };
+        let chunk = Reader { data: &self.data[..end], pos: self.pos };
         self.pos = end;
         Ok((tag, chunk))
     }
@@ -199,24 +192,17 @@ impl<'a> Reader<'a> {
             position: self.floats()?,
             scale: self.floats()?,
             rotation: self.rotation()?,
-            mesh: None,
-            bone: None,
-            keys: Vec::new(),
-            children: Vec::new(),
+            contents: Vec::new(),
         };
         while !self.is_empty() {
             let (tag, mut sub) = self.chunk()?;
-            match &tag {
-                b"MESH" | b"BONE" if node.mesh.is_some() || node.bone.is_some() => {
-                    return Err(format!("node `{}` has more than one mesh or bone", node.name));
-                }
-                b"MESH" => node.mesh = Some(sub.mesh()?),
-                b"BONE" => node.bone = Some(sub.bone()?),
-                b"KEYS" => sub.keys(&mut node.keys)?,
-                b"NODE" => node.children.push(sub.node()?),
-                _ => {}
-            }
-            self.buffers = sub.buffers;
+            node.contents.push(match &tag {
+                b"MESH" => Content::Mesh(sub.mesh()?),
+                b"BONE" => Content::Bone(sub.bone()?),
+                b"KEYS" => Content::Keys(sub.keys()?),
+                b"NODE" => Content::Node(sub.node()?),
+                _ => continue,
+            });
         }
         Ok(node)
     }
@@ -241,13 +227,12 @@ impl<'a> Reader<'a> {
                     while !sub.is_empty() {
                         triangles.push([sub.id()?, sub.id()?, sub.id()?]);
                     }
-                    triangle_sets.push(Tris { brush_id, buffer: self.buffers, triangles });
-                    self.buffers += 1;
+                    triangle_sets.push(Tris { brush_id, triangles });
                 }
                 _ => {}
             }
         }
-        let vertices = vertices.ok_or("mesh has no VRTS chunk")?;
+        let vertices = vertices.unwrap_or_default();
         for tri in triangle_sets.iter().flat_map(|set| &set.triangles) {
             if let Some(id) = tri.iter().find(|&&id| id >= vertices.list.len()) {
                 return Err(format!("triangle uses vertex {id}, but the mesh has {}", vertices.list.len()));
@@ -259,8 +244,9 @@ impl<'a> Reader<'a> {
     fn vertices(&mut self) -> Result<Vertices, String> {
         let flags = self.int()?;
         let (sets, size) = (self.int()?, self.int()?);
-        let (Ok(tex_coord_sets @ 0..=8), Ok(tex_coord_set_size @ 0..=4)) = (usize::try_from(sets), usize::try_from(size)) else {
-            return Err(format!("{sets} sets of {size} texture coordinates, at most 8 of 4 are allowed"));
+        // more and Luanti doesn't load the model
+        let (Ok(tex_coord_sets @ 0..=2), Ok(tex_coord_set_size @ 0..=3)) = (usize::try_from(sets), usize::try_from(size)) else {
+            return Err(format!("{sets} sets of {size} texture coordinates, Luanti loads at most 2 sets of 3"));
         };
         let mut vertices = Vertices {
             tex_coord_sets,
@@ -282,18 +268,14 @@ impl<'a> Reader<'a> {
     fn bone(&mut self) -> Result<Vec<(usize, f32)>, String> {
         let mut weights = Vec::new();
         while !self.is_empty() {
-            let vertex = self.id()?;
-            let weight = self.float()?;
-            // Many exporters include unneeded zero weights.
-            if weight > 0.0 {
-                weights.push((vertex, weight));
-            }
+            weights.push((self.id()?, self.float()?));
         }
         Ok(weights)
     }
 
-    fn keys(&mut self, keys: &mut Vec<Key>) -> Result<(), String> {
+    fn keys(&mut self) -> Result<Vec<Key>, String> {
         let flags = self.int()?;
+        let mut keys = Vec::new();
         while !self.is_empty() {
             keys.push(Key {
                 frame: self.int()?,
@@ -302,7 +284,7 @@ impl<'a> Reader<'a> {
                 rotation: if flags & 4 != 0 { Some(self.rotation()?) } else { None },
             });
         }
-        Ok(())
+        Ok(keys)
     }
 }
 
@@ -363,7 +345,7 @@ pub(crate) mod tests {
     fn reads_textures_brushes_and_nodes() {
         let data = b3d(|w| {
             w.chunk("TEXS", |w| {
-                w.string("tex.png").int(1).int(2).floats(&[0.0, 0.0, 2.0, 1.0, 0.0]);
+                w.string("tex.png").int(65536).int(2).floats(&[0.0, 0.0, 2.0, 1.0, 0.0]);
             });
             w.chunk("BRUS", |w| {
                 w.int(1).string("brush").floats(&[1.0, 0.5, 0.25, 1.0, 0.0]).int(1).int(0).int(0);
@@ -374,21 +356,24 @@ pub(crate) mod tests {
                     w.node_header("child", [0.0; 3], [0.0, 1.0, 0.0, 0.0]);
                 });
             });
+            w.chunk("NODE", |w| {
+                w.node_header("second", [0.0; 3], [0.0, 0.0, 0.0, 1.0]);
+            });
         });
         let b3d = parse(&data).unwrap();
-        assert_eq!(b3d.textures[0].file, "tex.png");
-        assert_eq!(b3d.textures[0].scale, [2.0, 1.0]);
+        assert_eq!((b3d.textures[0].file.as_str(), b3d.textures[0].flags, b3d.textures[0].scale), ("tex.png", 65536, [2.0, 1.0]));
         assert_eq!(b3d.brushes[0].name, "brush");
         assert_eq!(b3d.brushes[0].color, [1.0, 0.5, 0.25, 1.0]);
         assert_eq!(b3d.brushes[0].texture_ids, vec![Some(0)]);
-        let root = b3d.node.unwrap();
-        assert_eq!(root.position, [1.0, 2.0, 3.0]);
-        assert_eq!(root.children[0].name, "child");
-        assert_eq!(root.children[0].rotation, [0.0, 1.0, 0.0, 0.0]);
+        assert_eq!(b3d.nodes.len(), 2);
+        assert_eq!(b3d.nodes[0].position, [1.0, 2.0, 3.0]);
+        let Content::Node(child) = &b3d.nodes[0].contents[0] else { panic!("not a node") };
+        assert_eq!(child.name, "child");
+        assert_eq!(child.rotation, [0.0, 1.0, 0.0, 0.0]);
     }
 
     #[test]
-    fn reads_meshes_bones_and_keys() {
+    fn reads_meshes_bones_and_keys_in_order() {
         let data = b3d(|w| {
             w.chunk("NODE", |w| {
                 w.node_header("mesh", [0.0; 3], [0.0, 0.0, 0.0, 1.0]);
@@ -404,36 +389,38 @@ pub(crate) mod tests {
                         w.int(-1).int(0).int(1).int(2);
                     });
                     w.chunk("TRIS", |w| {
-                        w.int(-1).int(2).int(1).int(0);
+                        w.int(0).int(2).int(1).int(0);
                     });
                 });
-                w.chunk("NODE", |w| {
-                    w.node_header("bone", [0.0; 3], [0.0, 0.0, 0.0, 1.0]);
-                    w.chunk("BONE", |w| {
-                        w.int(0).floats(&[1.0]).int(1).floats(&[0.0]);
-                    });
-                    w.chunk("KEYS", |w| {
-                        w.int(1 | 4).int(1).floats(&[1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0]);
-                    });
-                    w.chunk("XTRA", |w| {
-                        w.int(42);
-                    });
+                w.chunk("BONE", |w| {
+                    w.int(0).floats(&[1.0]).int(1).floats(&[0.0]);
+                });
+                w.chunk("KEYS", |w| {
+                    w.int(1 | 4).int(1).floats(&[1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0]);
+                });
+                w.chunk("XTRA", |w| {
+                    w.int(42);
+                });
+                w.chunk("KEYS", |w| {
+                    w.int(2).int(3).floats(&[2.0, 2.0, 2.0]);
                 });
             });
         });
-        let node = parse(&data).unwrap().node.unwrap();
-        let mesh = node.mesh.unwrap();
+        let node = parse(&data).unwrap().nodes.pop().unwrap();
+        let [Content::Mesh(mesh), Content::Bone(bone), Content::Keys(first), Content::Keys(second)] = &node.contents[..] else {
+            panic!("unexpected contents")
+        };
         assert!(mesh.vertices.has_normals && !mesh.vertices.has_colors);
         assert_eq!(mesh.vertices.list[2].pos, [2.0, 0.0, 0.0]);
         assert_eq!(mesh.vertices.list[2].tex_coords, vec![0.5, 0.5]);
+        assert_eq!(mesh.triangle_sets[1].brush_id, Some(0));
         assert_eq!(mesh.triangle_sets[1].triangles, vec![[2, 1, 0]]);
-        assert_eq!(mesh.triangle_sets[1].buffer, 1);
-        let bone = &node.children[0];
-        assert_eq!(bone.bone, Some(vec![(0, 1.0)]), "zero weights are dropped");
-        assert_eq!(bone.keys[0].frame, 1);
-        assert_eq!(bone.keys[0].position, Some([1.0, 2.0, 3.0]));
-        assert_eq!(bone.keys[0].scale, None);
-        assert_eq!(bone.keys[0].rotation, Some([0.0, 0.0, 0.0, 1.0]));
+        assert_eq!(bone, &[(0, 1.0), (1, 0.0)]);
+        assert_eq!(first[0].frame, 1);
+        assert_eq!(first[0].position, Some([1.0, 2.0, 3.0]));
+        assert_eq!(first[0].scale, None);
+        assert_eq!(first[0].rotation, Some([0.0, 0.0, 0.0, 1.0]));
+        assert_eq!(second[0].scale, Some([2.0, 2.0, 2.0]));
     }
 
     #[test]
@@ -447,20 +434,28 @@ pub(crate) mod tests {
         });
         truncated.truncate(truncated.len() - 2);
         assert!(parse(&truncated).is_err());
-        let out_of_range = b3d(|w| {
-            w.chunk("NODE", |w| {
-                w.node_header("mesh", [0.0; 3], [0.0, 0.0, 0.0, 1.0]);
-                w.chunk("MESH", |w| {
-                    w.int(-1);
-                    w.chunk("VRTS", |w| {
-                        w.int(0).int(0).int(0).floats(&[0.0; 3]);
-                    });
-                    w.chunk("TRIS", |w| {
-                        w.int(-1).int(0).int(0).int(1);
+        let mesh = |vrts: &[i32], tris: &[i32]| {
+            b3d(|w| {
+                w.chunk("NODE", |w| {
+                    w.node_header("mesh", [0.0; 3], [0.0, 0.0, 0.0, 1.0]);
+                    w.chunk("MESH", |w| {
+                        w.int(-1);
+                        w.chunk("VRTS", |w| {
+                            for &i in vrts {
+                                w.int(i);
+                            }
+                            w.floats(&[0.0; 3]);
+                        });
+                        w.chunk("TRIS", |w| {
+                            for &i in tris {
+                                w.int(i);
+                            }
+                        });
                     });
                 });
-            });
-        });
-        assert!(parse(&out_of_range).err().unwrap().contains("vertex 1"));
+            })
+        };
+        assert!(parse(&mesh(&[0, 0, 0], &[-1, 0, 0, 1])).err().unwrap().contains("vertex 1"));
+        assert!(parse(&mesh(&[0, 3, 0], &[-1])).err().unwrap().contains("at most 2 sets of 3"));
     }
 }

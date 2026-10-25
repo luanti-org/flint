@@ -62,17 +62,18 @@ these check a package's files rather than its Lua, for the package being linted 
 | `luanti_legacy_description_txt` | warn | `description.txt`. the fix moves it into `description` of the conf file |
 | `luanti_legacy_depends_txt` | warn | a mod's `depends.txt`. the fix moves it into `depends` and `optional_depends` of `mod.conf` |
 | `luanti_legacy_tr_translation` | warn | `locale/*.tr` translations. the fix converts them to gettext `locale/*.po` |
-| `luanti_legacy_b3d_model` | warn | a mod's `models/**/*.b3d`. the fix converts them to glTF `.glb` like [`flint convert`](convert.md#b3d-to-gltf), and replaces `"name.b3d"` strings with `"name.glb"` in the Lua of the mod, or of the game or modpack it's in. see [below](#b3d-models) for when it's fixable |
+| `luanti_legacy_b3d_model` | warn | a mod's `models/**/*.b3d`. the fix converts them to glTF `.glb` like [`flint convert`](convert.md#models-to-gltf), and replaces `"name.b3d"` strings with `"name.glb"` in the Lua of the mod, or of the game or modpack it's in. see [below](#b3d-and-x-models) for when it's fixable |
+| `luanti_legacy_x_model` | warn | a mod's `models/**/*.x`, fixed the same way as `luanti_legacy_b3d_model` |
 
 if an old file doesn't match what's already in the conf file or `.po`, it can't be fixed and nothing is changed. these can't be changed by filter comments, only in `[linter.lints]`.
 
-### b3d models
+### b3d and x models
 
-a `.b3d` model is only fixed when nothing else needs to change for it to look the same:
+a `.b3d` or `.x` model is only fixed when nothing else needs to change for it to look the same:
 
 * the `min_minetest_version` of the mod, or of the modpack or game it's in, is at least `5.10`, the first to load glTF
-* it's animated, or only entities use it. static `.b3d` node meshes use 1 unit per node, but glTF 10, while entities use 10 for both. it counts as only used by entities when its name is always passed straight to `register_entity`, `set_properties`, `register_mob`, `register_model` or `set_model` (e.g. `player_api.set_model`), in a table or not. otherwise convert it with [`flint convert`](convert.md) and multiply the node's `visual_scale` by 10
-* it converts without [warnings](convert.md#b3d-to-gltf) about something Luanti would show differently. keyframes before frame 1 are fine, as Luanti moves them to frame 1 for both formats
+* it's animated, or only entities use it. static `.b3d` and `.x` node meshes use 1 unit per node, but glTF 10, while entities use 10 for both. it counts as only used by entities when its name is always passed straight to `register_entity`, `set_properties`, `register_mob`, `register_model` or `set_model` (e.g. `player_api.set_model`), in a table or not. otherwise convert it with [`flint convert`](convert.md) and multiply the node's `visual_scale` by 10
+* it converts without [warnings](convert.md#models-to-gltf) about something Luanti would show differently. keyframes before frame 1, repeated or out of order are fine, as the conversion does what Luanti does with them
 * its file name is in the Lua code as a string, e.g. `mesh = "mymod_mob.b3d"`. names built in code, like `name .. ".b3d"`, can't be changed
 * there's no `.glb` or `.gltf` of the same name yet
 
