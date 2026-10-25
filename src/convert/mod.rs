@@ -7,7 +7,7 @@ use crate::config::Config;
 use crate::lint::package::translations;
 use crate::parsers::b3d;
 
-mod gltf;
+pub(crate) mod gltf;
 mod nodebox;
 
 const SUPPORTED: &str = "`.b3d` to `.gltf` or `.glb`, `.obj` to a node box `.lua`, and `.tr` to `.po`";
@@ -39,7 +39,7 @@ pub fn run(config: &Config, input: &Path, output: &Path, scale: Option<f64>) -> 
     let (bytes, warnings) = converted.map_err(|e| format!("{}: {e}", input.display()))?;
 
     for warning in warnings {
-        eprintln!("warning: {}: {warning}", input.display());
+        eprintln!("warning: {}: {}", input.display(), warning.message);
     }
     fs::write(output, bytes).map_err(|e| format!("cannot write {}: {e}", output.display()))?;
     println!("converted {} to {}", input.display(), output.display());

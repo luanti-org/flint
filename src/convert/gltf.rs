@@ -21,6 +21,13 @@ const FLOAT: u32 = 5126;
 /// Luanti stores vertex indices as 16 bit, and doesn't allow the max value
 const MAX_VERTICES: usize = u16::MAX as usize - 1;
 
+#[derive(Debug, PartialEq)]
+pub struct Warning {
+    pub message: String,
+    /// whether Luanti shows the glTF differently from the b3d
+    pub changes_model: bool,
+}
+
 pub struct Gltf {
     json: Value,
     buffer: Vec<u8>,
@@ -60,7 +67,7 @@ impl Gltf {
 }
 
 /// returns the glTF and warnings about what couldn't be converted
-pub fn convert(b3d: &B3d) -> Result<(Gltf, Vec<String>), String> {
+pub fn convert(b3d: &B3d) -> Result<(Gltf, Vec<Warning>), String> {
     let root = b3d.node.as_ref().ok_or("the model is empty")?;
     let mut c = Converter::new(b3d);
     let root = c.add_node(root, None, IDENTITY)?;
@@ -101,7 +108,7 @@ pub fn convert(b3d: &B3d) -> Result<(Gltf, Vec<String>), String> {
 
 struct Converter<'a> {
     b3d: &'a B3d,
-    warnings: Vec<String>,
+    warnings: Vec<Warning>,
     non_finite: bool,
     buffer: Vec<u8>,
     views: Vec<Value>,
@@ -146,7 +153,8 @@ impl<'a> Converter<'a> {
         }
     }
 
-    fn warn(&mut self, warning: String) {
+    fn warn(&mut self, message: String, changes_model: bool) {
+        let warning = Warning { message, changes_model };
         if !self.warnings.contains(&warning) {
             self.warnings.push(warning);
         }
@@ -246,7 +254,8 @@ impl<'a> Converter<'a> {
     /// adds an animation channel for each of position, rotation and scale that `node` has keys for
     fn add_keys(&mut self, node: &Node, id: usize) {
         if let Some(key) = node.keys.iter().find(|key| key.frame < 1) {
-            self.warn(format!("bone `{}` has keyframe {}, Luanti uses 1 for frames below that", node.name, key.frame));
+            // so does the converted model
+            self.warn(format!("bone `{}` has keyframe {}, Luanti uses 1 for frames below that", node.name, key.frame), false);
         }
         let keys = || node.keys.iter().map(|key| (key.frame.max(1), key));
         let translations = keys().filter_map(|(frame, key)| Some((frame, vector(key.position?)))).collect();
@@ -265,7 +274,7 @@ impl<'a> Converter<'a> {
         let before = keys.len();
         keys.dedup_by_key(|&mut (frame, _)| frame);
         if keys.len() != before {
-            self.warn(format!("bone `{}` has more than one {path} for a frame, only the first is used", node.name));
+            self.warn(format!("bone `{}` has more than one {path} for a frame, only the first is used", node.name), true);
         }
 
         // Luanti's glTF frames are b3d frames minus one
@@ -282,7 +291,7 @@ impl<'a> Converter<'a> {
         let vertices = &mesh.vertices;
         let count = vertices.list.len();
         if count > MAX_VERTICES {
-            self.warn(format!("a mesh has {count} vertices, Luanti can only load up to {MAX_VERTICES}"));
+            self.warn(format!("a mesh has {count} vertices, Luanti can only load up to {MAX_VERTICES}"), true);
         }
         let mut attributes = Map::new();
         let positions = Data::floats(vertices.list.iter().map(|v| vector(v.pos))).with_bounds();
@@ -298,7 +307,7 @@ impl<'a> Converter<'a> {
         }
         let size = vertices.tex_coord_set_size;
         if size < 2 && vertices.tex_coord_sets > 0 {
-            self.warn("texture coordinates have less than 2 components, so they're left out".to_string());
+            self.warn("texture coordinates have less than 2 components, so they're left out".to_string(), true);
         } else {
             for set in 0..vertices.tex_coord_sets {
                 let uvs = Data::floats(vertices.list.iter().map(|v| [v.tex_coords[set * size], v.tex_coords[set * size + 1]]));
@@ -374,7 +383,7 @@ impl<'a> Converter<'a> {
         let brush = brush_id.and_then(|id| self.b3d.brushes.get(id));
         let texture = brush.and_then(|b| b.texture_ids.first().copied().flatten()).and_then(|id| self.b3d.textures.get(id));
         if let Some(texture) = texture.filter(|t| t.scale != [1.0, 1.0]) {
-            self.warn(format!("texture `{}` is scaled, which isn't converted", texture.file));
+            self.warn(format!("texture `{}` is scaled, which isn't converted", texture.file), true);
         }
 
         if self.materials.len() <= buffer {
@@ -541,7 +550,8 @@ mod tests {
     const NO_ROTATION: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
     fn convert_b3d(data: &[u8]) -> (Gltf, Vec<String>) {
-        convert(&parse(data).unwrap()).unwrap()
+        let (gltf, warnings) = convert(&parse(data).unwrap()).unwrap();
+        (gltf, warnings.into_iter().map(|w| w.message).collect())
     }
 
     /// a MESH chunk of vertices with normals and one set of UVs, and triangle sets with their brush
@@ -898,6 +908,9 @@ mod tests {
                 "bone `spinner` has more than one translation for a frame, only the first is used",
             ]
         );
+        // Luanti also moves the keyframe to 1, but would play both duplicates
+        let changes: Vec<bool> = convert(&parse(&data).unwrap()).unwrap().1.iter().map(|w| w.changes_model).collect();
+        assert_eq!(changes, [false, true]);
         let sampler = get(&gltf, "/animations/0/samplers/0");
         assert_eq!(read(&gltf, &sampler["input"]), [0.0, 2.0]);
         assert_eq!(read(&gltf, &sampler["output"]), [1.0, 0.0, 0.0, 2.0, 0.0, 0.0]);

@@ -71,6 +71,16 @@ pub struct Key {
     pub rotation: Option<[f32; 4]>,
 }
 
+impl B3d {
+    /// whether any node has keyframes or a bone weighting vertices
+    pub fn is_animated(&self) -> bool {
+        fn animated(node: &Node) -> bool {
+            !node.keys.is_empty() || node.bone.as_ref().is_some_and(|w| !w.is_empty()) || node.children.iter().any(animated)
+        }
+        self.node.as_ref().is_some_and(animated)
+    }
+}
+
 pub fn parse(data: &[u8]) -> Result<B3d, String> {
     let mut reader = Reader { data, pos: 0, buffers: 0 };
     let (tag, mut chunk) = reader.chunk()?;

@@ -2,6 +2,7 @@
 //! modern equivalents.
 
 pub(crate) mod legacy_txt;
+mod models;
 pub(crate) mod plural_forms;
 pub(crate) mod translations;
 
@@ -22,13 +23,18 @@ pub struct Problem {
 
 #[derive(Default)]
 pub struct Fix {
-    writes: Vec<(PathBuf, String)>,
+    writes: Vec<(PathBuf, Vec<u8>)>,
+    replacements: Vec<(PathBuf, String, String)>,
     migrations: Vec<(PathBuf, PathBuf)>,
 }
 
 impl Fix {
-    fn write(&mut self, path: impl Into<PathBuf>, content: String) {
-        self.writes.push((path.into(), content));
+    fn write(&mut self, path: impl Into<PathBuf>, content: impl Into<Vec<u8>>) {
+        self.writes.push((path.into(), content.into()));
+    }
+
+    fn replace(&mut self, path: impl Into<PathBuf>, from: impl Into<String>, to: impl Into<String>) {
+        self.replacements.push((path.into(), from.into(), to.into()));
     }
 
     fn migrate(&mut self, from: impl Into<PathBuf>, into: impl Into<PathBuf>) {
@@ -42,6 +48,11 @@ impl Fix {
             if !self.migrations.iter().any(|(_, into)| into == path) {
                 println!("wrote {}", path.display());
             }
+        }
+        for (path, from, to) in &self.replacements {
+            let text = fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+            fs::write(path, text.replace(from, to)).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+            println!("replaced {from} with {to} in {}", path.display());
         }
         for (from, into) in self.migrations {
             fs::remove_file(&from).map_err(|e| format!("cannot remove {}: {e}", from.display()))?;
@@ -72,6 +83,7 @@ const RULES: &[(&str, Check)] = &[
     (legacy_txt::LEGACY_DESCRIPTION_TXT, legacy_txt::description_txt),
     (legacy_txt::LEGACY_DEPENDS_TXT, legacy_txt::depends_txt),
     (translations::NAME, translations::check),
+    (models::NAME, models::check),
 ];
 
 /// build every package lint, rejecting options for them in `config`
