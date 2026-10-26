@@ -16,6 +16,10 @@ use serde::Deserialize;
 
 pub const FILE_NAME: &str = "flint.toml";
 
+/// oxipng's own default
+pub const DEFAULT_COMPRESS_LEVEL: u8 = 2;
+pub const MAX_COMPRESS_LEVEL: u8 = 6;
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
@@ -34,7 +38,7 @@ pub struct Compress {
 
 impl Default for Compress {
     fn default() -> Self {
-        Compress { level: crate::compress::DEFAULT_LEVEL }
+        Compress { level: DEFAULT_COMPRESS_LEVEL }
     }
 }
 
@@ -81,10 +85,10 @@ pub fn load(dir: &Path) -> Result<Config, String> {
     config.selene()?;
     config.globals()?;
     config.includes()?;
-    if config.compress.level > crate::compress::MAX_LEVEL {
+    if config.compress.level > MAX_COMPRESS_LEVEL {
         return Err(format!(
             "{FILE_NAME}: [compress]: `level` must be from 0 to {}, got {}",
-            crate::compress::MAX_LEVEL,
+            MAX_COMPRESS_LEVEL,
             config.compress.level
         ));
     }
@@ -190,7 +194,7 @@ impl Includes {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_lua, load, FILE_NAME};
+    use super::{DEFAULT_COMPRESS_LEVEL, FILE_NAME, is_lua, load};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -222,7 +226,7 @@ mod tests {
         let config = load(&dir).unwrap();
         assert!(config.vcs.enabled && config.vcs.use_ignore_file);
         assert_eq!(config.files.includes, ["**"]);
-        assert_eq!(config.compress.level, crate::compress::DEFAULT_LEVEL);
+        assert_eq!(config.compress.level, DEFAULT_COMPRESS_LEVEL);
         assert_eq!(config.stylua().unwrap().syntax, stylua_lib::LuaVersion::LuaJIT);
     }
 

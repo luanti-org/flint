@@ -9,10 +9,6 @@ use oxipng::{Options, StripChunks};
 
 use crate::annotate::{self, Level};
 
-/// oxipng's own default
-pub const DEFAULT_LEVEL: u8 = 2;
-pub const MAX_LEVEL: u8 = 6;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Media {
     Png,

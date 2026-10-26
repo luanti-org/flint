@@ -2,6 +2,7 @@
 //! modern equivalents.
 
 pub(crate) mod legacy_txt;
+#[cfg(feature = "convert")]
 mod models;
 pub(crate) mod plural_forms;
 pub(crate) mod translations;
@@ -33,6 +34,7 @@ impl Fix {
         self.writes.push((path.into(), content.into()));
     }
 
+    #[cfg(feature = "convert")]
     fn replace(&mut self, path: impl Into<PathBuf>, from: impl Into<String>, to: impl Into<String>) {
         self.replacements.push((path.into(), from.into(), to.into()));
     }
@@ -83,7 +85,9 @@ const RULES: &[(&str, Check)] = &[
     (legacy_txt::LEGACY_DESCRIPTION_TXT, legacy_txt::description_txt),
     (legacy_txt::LEGACY_DEPENDS_TXT, legacy_txt::depends_txt),
     (translations::NAME, translations::check),
+    #[cfg(feature = "convert")]
     (models::B3D_NAME, models::check_b3d),
+    #[cfg(feature = "convert")]
     (models::X_NAME, models::check_x),
 ];
 

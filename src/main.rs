@@ -3,9 +3,11 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 
 mod annotate;
+#[cfg(feature = "compress")]
 mod compress;
 mod config;
 mod content_type;
+#[cfg(feature = "convert")]
 mod convert;
 mod format;
 mod generate;
@@ -45,6 +47,7 @@ enum Commands {
     },
     /// Migrate legacy mod files to their modern equivalents, same as `lint --write`
     Modernize,
+    #[cfg(feature = "compress")]
     /// Losslessly compress PNG textures with oxipng and Ogg Vorbis sounds with OptiVorbis
     Compress {
         /// Don't write changes, fail if any file could be compressed
@@ -59,6 +62,7 @@ enum Commands {
         #[arg(long)]
         check: bool,
     },
+    #[cfg(feature = "convert")]
     /// Convert a file to another format: `.b3d` models to glTF (`.gltf`/`.glb`), `.obj` models to node boxes (`.lua`), and `.tr` translations to `.po`
     Convert {
         /// File to convert
@@ -99,8 +103,10 @@ fn main() {
         Commands::Format { check } => format::run(&config, check),
         Commands::Lint { write } => lint::run(&config, write),
         Commands::Modernize => lint::run(&config, true),
+        #[cfg(feature = "compress")]
         Commands::Compress { check } => compress::run(&config, check),
         Commands::Generate { files, check } => generate::run(&config, &files, check),
+        #[cfg(feature = "convert")]
         Commands::Convert { input, output, scale } => convert::run(&config, &input, &output, scale),
     };
 

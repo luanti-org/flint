@@ -29,6 +29,7 @@ pub(super) fn check(dir: &Path, _: ContentType) -> Result<Vec<Problem>, String> 
     Ok(problems)
 }
 
+#[cfg(feature = "convert")]
 pub(crate) fn tr_to_po(tr_path: &Path, text: &str) -> Result<String, String> {
     let (domain, lang) = domain_and_lang(tr_path)?;
     tr::parse(text).and_then(|tr| build_catalog(&tr, domain, lang)).and_then(|catalog| render(&catalog))

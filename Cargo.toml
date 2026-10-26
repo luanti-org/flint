@@ -3,16 +3,23 @@ name = "flint"
 version = "0.1.0"
 edition = "2024"
 
+# commands that can be left out for a smaller binary, e.g. `--no-default-features --features compress`
+[features]
+default = ["compress", "convert"]
+compress = ["dep:oxipng", "dep:optivorbis"]
+# also enables the `luanti_legacy_b3d_model` and `luanti_legacy_x_model` lints, whose fixes convert models
+convert = ["dep:gltf-json"]
+
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 codespan = "0.11"
 codespan-reporting = "0.11"
 full_moon = { version = "3.0", features = ["luajit"] }
 globset = "0.4"
-gltf-json = { version = "1.4.1", features = ["names"] }
+gltf-json = { version = "1.4.1", features = ["names"], optional = true }
 ignore = "0.4"
-optivorbis = "0.3"
-oxipng = { version = "10.2", default-features = false, features = ["parallel"] }
+optivorbis = { version = "0.3", optional = true }
+oxipng = { version = "10.2", default-features = false, features = ["parallel"], optional = true }
 polib = "0.3"
 selene-lib = { git = "https://github.com/Kampfkarren/selene", tag = "0.32.0", default-features = false, features = ["luajit"] }
 serde = { version = "1", features = ["derive"] }
