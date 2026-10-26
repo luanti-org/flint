@@ -41,6 +41,10 @@ runs:
     - name: Build flint
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
+      # the release profile is tuned for small distributed binaries, so skip the slow lto here
+      env:
+        CARGO_PROFILE_RELEASE_LTO: "false"
+        CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
       run: cargo install --locked --path "$GITHUB_ACTION_PATH" --root "$RUNNER_TEMP/flint"
 
     - name: Run flint

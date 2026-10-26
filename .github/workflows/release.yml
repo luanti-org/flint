@@ -51,12 +51,12 @@ jobs:
           cp README.md LICENSE "$name/"
           if [[ "${{ matrix.target }}" == *windows* ]]; then
             cp "target/${{ matrix.target }}/release/flint.exe" "$name/"
-            7z a "$name.zip" "$name" > /dev/null
+            7z a -mx=9 "$name.zip" "$name" > /dev/null
             echo "file=$name.zip" >> "$GITHUB_OUTPUT"
           else
             cp "target/${{ matrix.target }}/release/flint" "$name/"
-            tar -czf "$name.tar.gz" "$name"
-            echo "file=$name.tar.gz" >> "$GITHUB_OUTPUT"
+            tar -cJf "$name.tar.xz" "$name"
+            echo "file=$name.tar.xz" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/upload-artifact@v4

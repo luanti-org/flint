@@ -20,6 +20,12 @@ serde_json = { version = "1", features = ["preserve_order"] }
 stylua = { version = "2.6", default-features = false, features = ["luajit"] }
 toml = "0.7"
 
+# smaller release binaries. panic stays as unwind since panic_guard relies on catch_unwind
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+
 # musl's allocator is slow under oxipng's multithreaded compression
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = "0.1"
