@@ -16,13 +16,13 @@ flint convert locale/mymod.de.tr locale/mymod.de.po
 |---|---|---|
 | `.b3d`, `.x` | `.gltf`, `.glb` | a glTF model, see [models to glTF](#models-to-gltf) |
 | `.obj` | `.lua` | a node box of the model, see [obj to node box](#obj-to-node-box) |
-| `.tr` | `.po` | gettext translations, the same as the fix of [`luanti_legacy_tr_translation`](lint.md#package-lints). the file must be named `<textdomain>.<lang>.tr` |
+| `.tr` | `.po` | gettext translations, the same as the fix of [`luanti_legacy_tr_translation`](../lint/#package-lints). the file must be named `<textdomain>.<lang>.tr` |
 
 | option | purpose |
 |---|---|
 | `--scale` | multiply the node box's coordinates by this, for `.obj` models. defaults to `1` |
 
-an existing output file is overwritten. `.lua` files are formatted like [`flint format`](format.md) does, with its settings from [flint.toml](config.md).
+an existing output file is overwritten. `.lua` files are formatted like [`flint format`](../format/) does, with its settings from [flint.toml](../config/).
 
 ## models to glTF
 

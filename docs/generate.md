@@ -14,7 +14,7 @@ with no args, every applicable file is created. trying to create an unsupported 
 
 | option | purpose |
 |---|---|
-| `--check` | don't write anything, list the files that are out of date and fail if there are any. useful in [CI](ci.md) |
+| `--check` | don't write anything, list the files that are out of date and fail if there are any. useful in [CI](../ci/) |
 
 | file | applies to | what's generated |
 |---|---|---|
@@ -22,7 +22,7 @@ with no args, every applicable file is created. trying to create an unsupported 
 | `settingtypes.txt` | mods | a line for each of the mod's own settings its code reads that isn't listed yet, see [settingtypes.txt](#settingtypestxt) |
 | `pot` | mods and texture packs | `locale/<name>.pot`, and missing strings added to `locale/*.po`, see [translations](#translations) |
 | `.cdb.json` | the package | [ContentDB](https://content.luanti.org/help/package_config/#cdbjson) metadata: `type`, and `title`, `short_description` from the conf, and `repo` and `issue_tracker` from the git `origin` remote. only keys that aren't set are added |
-| `.luacheckrc` | the package, unless it's a texture pack | a [luacheck](https://github.com/lunarmodules/luacheck) config allowing the Luanti globals, the package's mods, the mods they depend on, and `globals` from [flint.toml](config.md). only created, an existing one is left alone |
+| `.luacheckrc` | the package, unless it's a texture pack | a [luacheck](https://github.com/lunarmodules/luacheck) config allowing the Luanti globals, the package's mods, the mods they depend on, and `globals` from [flint.toml](../config/). only created, an existing one is left alone |
 | `.gitattributes` | the package | `* text=auto eol=lf`, and `export-ignore` for `.*` and `flint.toml` to leave them out of [ContentDB releases](https://content.luanti.org/help/package_config/#excluding-files). missing rules are added to an existing one |
 
 ## Conf files
@@ -35,7 +35,7 @@ with no args, every applicable file is created. trying to create an unsupported 
 
 ## settingtypes.txt
 
-follows the convention of [`luanti_missing_settingtype`](lint.md#luanti-lints): settings named `modname.*` or `modname_*`, read with a literal name, that aren't in the `settingtypes.txt` of the mod or of any modpack or game it's in. lines are added to the mod's own:
+follows the convention of [`luanti_missing_settingtype`](../lint/#luanti-lints): settings named `modname.*` or `modname_*`, read with a literal name, that aren't in the `settingtypes.txt` of the mod or of any modpack or game it's in. lines are added to the mod's own:
 
 ```lua
 local speed = tonumber(core.settings:get("mymod.max_speed")) or 1.5
