@@ -2,6 +2,7 @@
 //! modern equivalents.
 
 pub(crate) mod legacy_txt;
+mod minetest_domain;
 mod models;
 pub(crate) mod plural_forms;
 pub(crate) mod translations;
@@ -85,6 +86,7 @@ const RULES: &[(&str, Check)] = &[
     (translations::NAME, translations::check),
     (models::B3D_NAME, models::check_b3d),
     (models::X_NAME, models::check_x),
+    (minetest_domain::NAME, minetest_domain::check),
 ];
 
 /// build every package lint, rejecting options for them in `config`

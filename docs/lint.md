@@ -28,6 +28,7 @@ flint adds its own lints on top of selene's. they're configured the same way, in
 | `luanti_legacy_physics_override` | deny | `player:set_physics_override(speed, jump, gravity)` instead of a table, e.g. `player:set_physics_override({ speed = 1.5 })`. fixable, unless the last argument is a call or `...` |
 | `luanti_deprecated_env` | deny | `core.env` or `minetest.env`, on its own or with anything after it. its methods are functions on `core`, e.g. `core.get_node(pos)` instead of `core.env:get_node(pos)`. fixable when something follows `env` |
 | `luanti_minetest_global` | warn | the `minetest` global instead of `core`, e.g. `core.log("hi")` instead of `minetest.log("hi")`. fixable, unless the file has a local named `core` |
+| `luanti_minetest_domain` | warn | a `minetest.net` domain in a string or comment, e.g. `https://content.minetest.net`, use `luanti.org`. fixable, keeping any subdomain, e.g. `https://content.luanti.org`. the package's other text files are checked too, see [package lints](#package-lints) |
 | `luanti_missing_settingtype` | warn | a mod reads its own setting, e.g. `core.settings:get("mymod.speed")`, that isn't in `settingtypes.txt`. only settings named `modname.*` or `modname_*` with a literal name are checked, since others may belong to the engine or other mods. the `settingtypes.txt` of the mod and any modpack or game it's in count |
 | `luanti_deprecated_register_on_auth_fail` | warn | `core.register_on_auth_fail`, use `core.register_on_authplayer` and check `is_success` |
 | `luanti_deprecated_setting_get_pos` | warn | `core.setting_get_pos(name)`, use `core.settings:get_pos(name)`, added in 5.11. fixable where it's called, when the mod's `min_minetest_version` is at least `5.11` |
@@ -64,6 +65,7 @@ these check a package's files rather than its Lua, for the package being linted 
 | `luanti_legacy_tr_translation` | warn | `locale/*.tr` translations. the fix converts them to gettext `locale/*.po` |
 | `luanti_legacy_b3d_model` | warn | a mod's `models/**/*.b3d`. the fix converts them to glTF `.glb` like [`flint convert`](../convert/#models-to-gltf), and replaces `"name.b3d"` strings with `"name.glb"` in the Lua of the mod, or of the game or modpack it's in. see [below](#b3d-and-x-models) for when it's fixable |
 | `luanti_legacy_x_model` | warn | a mod's `models/**/*.x`, fixed the same way as `luanti_legacy_b3d_model` |
+| `luanti_minetest_domain` | warn | a `minetest.net` domain in the package's text files other than Lua, e.g. `mod.conf`, `settingtypes.txt`, `README.md`, `.po` files or `LICENSE`. hidden files and folders are skipped. the fix replaces it with `luanti.org`. it's the same lint as the [Luanti lint](#luanti-lints) for Lua, so one setting covers both |
 
 if an old file doesn't match what's already in the conf file or `.po`, it can't be fixed and nothing is changed. these can't be changed by filter comments, only in `[linter.lints]`.
 

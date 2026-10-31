@@ -17,6 +17,7 @@ use crate::parsers::{mod_conf, settingtypes_txt};
 mod deprecated_env;
 mod deprecated_function;
 mod legacy_physics_override;
+pub(crate) mod minetest_domain;
 mod minetest_global;
 pub(crate) mod missing_settingtype;
 
@@ -142,6 +143,7 @@ pub fn rules(config: &mut CheckerConfig<toml::Value>) -> Result<Vec<Box<dyn Rule
         Box::new(rule::<legacy_physics_override::LegacyPhysicsOverrideLint>(legacy_physics_override::NAME, config)?),
         Box::new(rule::<deprecated_env::DeprecatedEnvLint>(deprecated_env::NAME, config)?),
         Box::new(rule::<minetest_global::MinetestGlobalLint>(minetest_global::NAME, config)?),
+        Box::new(rule::<minetest_domain::MinetestDomainLint>(minetest_domain::NAME, config)?),
     ];
     rules.push(missing_settingtype::rule(config)?);
     rules.extend(deprecated_function::rules(config)?);
